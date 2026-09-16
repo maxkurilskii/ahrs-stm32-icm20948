@@ -1,6 +1,4 @@
 import argparse
-import csv
-import json
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -152,16 +150,16 @@ def collect_data_stats(data: Union[np.ndarray, pd.DataFrame]) -> dict:
     if isinstance(data, pd.DataFrame):
         data.describe()
         data.to_numpy()
-    stats = {"shape": f'{data.shape}'}
+    stats = {"shape": f"{data.shape}"}
     norm_ar = np.linalg.norm(data, axis=1)
     stats["mean_norm"] = np.mean(norm_ar)
-    stats['std_norm'] = np.std(norm_ar)
-    stats['min_norm'] = np.min(norm_ar)
-    stats['max_norm'] = np.max(norm_ar)
-    print(f'Shape of data: {stats["shape"]}')
-    print(f'Mean norm: {stats["mean_norm"]}')
-    print(f'STD: {stats['std_norm']}')
-    print(f'Min: { stats['min_norm']}, max: { stats['max_norm']}')
+    stats["std_norm"] = np.std(norm_ar)
+    stats["min_norm"] = np.min(norm_ar)
+    stats["max_norm"] = np.max(norm_ar)
+    print(f"Shape of data: {stats['shape']}")
+    print(f"Mean norm: {stats['mean_norm']}")
+    print(f"STD: {stats['std_norm']}")
+    print(f"Min: { stats['min_norm']}, max: {stats['max_norm']}")
     return stats
 
 def get_calibrated(sensor: Sensor, data: pd.DataFrame, 
@@ -257,17 +255,19 @@ def main():
     # Choose file 
     filename = Path("log_data")/args.filename
     print("Processing file: ", filename)
-    new_header = ["time_ms",
+    new_header = ["time_us",
                 "acc_x", "acc_y", "acc_z",
                 "gyro_x", "gyro_y", "gyro_z",
                 "mag_x", "mag_y", "mag_z"]
     df = pd.read_csv(filename,
                     header=0,
                     names=new_header)
-    
-    df["time_s"] = df["time_us"] // 10**6
-    df.drop(columns = "time_ms", inplace = True)
-    
+
+    t0 = df["time_us"].iloc[0]
+    df["time_s"] = (df["time_us"] - t0) / 1_000_000.0    
+    # df.drop(columns = "time_us", inplace = True)
+    time =  df["time_s"].to_numpy(dtype=np.float64)
+
     print("\nFirst lines of raw data measurements file:\n", df.head(5))
     # print("\nData info:\n", df.describe())
     
