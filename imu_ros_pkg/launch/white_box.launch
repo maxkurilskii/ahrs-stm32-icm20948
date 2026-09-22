@@ -1,0 +1,17 @@
+<launch>
+    <arg name="rviz" default="true"/>
+    <arg name="model" default="white_box.xacro"/>
+
+    <param name="robot_description" command="$(find xacro)/xacro --inorder $(find imu_ros_pkg)/test_description/$(arg model)" />
+
+    <!-- robot_state_publisher -->
+    <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher" output="screen">
+            <param name="publish_frequency" value="100.0"/> 
+    </node>
+
+    <node name="orientation_broadcast"  pkg="imu_ros_pkg" type="ori_broadcast.py"  output="log"/>
+   
+    <!-- Rviz config  -->
+    <node if="$(arg rviz)" name="rviz" pkg="rviz" type="rviz" args="-d $(find imu_ros_pkg)/rviz/white_box.rviz" required="false"/>
+
+</launch>
