@@ -94,11 +94,11 @@ RTE/*/RTE_Components.h
 # -------------------------------------------------------------------------
 # -------------------------------------------------------------------------
 #Ignore .venv and .vscode
-/Tools/host_scripts/.venv/*
-Tools/driver_test_code/.vscode/
+.venv/
+.vscode/
 
 # Log data folder
-/Tools/host_scripts/log_data/
+log_data/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
