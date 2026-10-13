@@ -3,10 +3,10 @@
 #include "ism20948_driver.h"
 #include "data_prepr.h"
 
-#define IMU_RAW_MEAS 0
-#define IMU_SCALED_MEAS 1
-#define EULER_ORIENTATION 2
-#define QUATERNION_ORIENTATION 3    
+#define IMU_RAW_MEAS                0
+#define IMU_SCALED_MEAS             1
+#define EULER_ORIENTATION           2
+#define QUATERNION_ORIENTATION      3    
 
 #define SEND_MODE IMU_SCALED_MEAS
 
@@ -45,6 +45,10 @@ int main(void)
     uint64_t master_ref_time = 0;
     uint32_t stm_ref_time = 0;
 
+    message_code_t cmd_code;
+    error_code_t err_code;
+    uint8_t payload_len;
+    
     imu_sample_t imu_sample = {.accel = {0.5, 0.5, 1.0},
                                 .gyro = {1.0, -1.0, 0.0},
                                 .mag = {10.0, -1.0, 33.0},
@@ -53,27 +57,32 @@ int main(void)
 
     while (1)
     {
-        while (cur_usart3_state != USART3_DATA_RECEIVED) __NOP();
-        // save app timestamp of received frame (expected to include host time)
+        while (cur_usart3_rx_state != USART3_RX_DATA_RECEIVED) __NOP();
+        // save app timestamp
         stm_ref_time = usCounter * SYS_TICK_PERIOD_US;
-        uint8_t err_code = parse_protocol_frame();
-        delay_ms(10);
-        if (err_code == NO_ERROR)
+
+        err_code = parse_protocol_frame(&cmd_code, &payload_len);
+        if (!(err_code == NO_ERROR))
         {
+            transmit_control_msg_usart3(ERROR_ST, err_code);
+          
+        }else{
             /* NO_ERROR = 0x00 -> ack msg */
             transmit_control_msg_usart3(ERROR_ST, NO_ERROR);
-            break;
-        } else{
-            transmit_control_msg_usart3(ERROR_ST, err_code);
+            // if START CMD was received -> save host time in received frame -> leave cycle
+            if(cmd_code == START_CMD){
+                uint8_t *frame = get_usart_rx_data();
+                memcpy((uint8_t *)&master_ref_time, &frame[3], 8); // skip first 3 bytes
+                break;
+            }
+            // else if(cmd_code == CALIB_CMD){
+
+            // }
         }
-    // cur_usart3_state become USART3_FREE in DMA tx
+        cur_usart3_rx_state = USART3_RX_FREE;
     }
 
     delay_ms(500);
-
-    // copy received timestamp (uint64_t)  in ref_time var
-    uint8_t *frame = get_usart_rx_data();
-    memcpy((uint8_t *)&master_ref_time, &frame[3], 8); // skip first 3 bytes
 
     IMU_Timer_Start();
 
@@ -103,7 +112,7 @@ int main(void)
         }
 
         if ((imu_sample_cnt * TIM9_PERIOD_MS >= UART_TX_PERIOD_MS) &&
-            (cur_usart3_state == USART3_FREE) && (cur_spi_state == SPI_FREE))
+            (cur_usart3_tx_state == USART3_TX_FREE) && (cur_spi_state == SPI_FREE))
         {
             imu_sample_cnt = 0;
             #if SEND_MODE == IMU_SCALED_MEAS

@@ -11,13 +11,20 @@
 #define RX_BUF_SIZE  100
 
 typedef enum{
-    USART3_FREE,
-    USART3_READY,
-    USART3_TRANSMITING,
-    USART3_DATA_RECEIVED
-}usart3_state_t;
+    USART3_TX_FREE,            // after transmition of data (DMA irq resets)
+    USART3_TX_TASKED,          // enough data was collected to be transmitted (not used)
+    USART3_TX_TRANSMITING,     // transmission in progress 
+}usart3_tx_state_t;
 
-extern volatile usart3_state_t cur_usart3_state;
+typedef enum{
+    USART3_RX_FREE,            // init state and after data is processed in APP
+    USART3_RX_DATA_RECEIVED,   // USART IDLE irq sets 
+}usart3_rx_state_t;
+
+
+/* Global UART3 STATE */
+extern volatile usart3_tx_state_t cur_usart3_tx_state;
+extern volatile usart3_rx_state_t cur_usart3_rx_state;
 
 void USART3_Init(void);
 
@@ -32,7 +39,7 @@ void transmit_quater_orient_usart3(imu_quater_orient_t* q);
 void transmit_byte_usart3_debug(uint8_t data);
 
 uint8_t* get_usart_rx_data(void);
-uint8_t parse_protocol_frame(void);
+error_code_t parse_protocol_frame(message_code_t * msg_code, uint8_t * payload_len);
 uint8_t GetUsartParsedMsgCode(void);
 
 void transmit_control_msg_usart3(uint8_t msg_code, uint8_t msg_data);

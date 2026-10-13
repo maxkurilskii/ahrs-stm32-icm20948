@@ -1,15 +1,17 @@
 #include "uart_driver.h"
 
-volatile usart3_state_t cur_usart3_state;
-volatile uint8_t received_len = 0;
-
+/*  UART3 TX BUFFER */
 uint8_t uart_tx_buf[100] = {0};
+
+/*  UART3 RX BUFFER */
 volatile uint8_t uart_rx_buf[RX_BUF_SIZE] = {0};
 
-uint8_t parsed_msg_code = 0;
-uint8_t parsed_payload_len = 0;
+/* Global UART3 STATE */
+volatile usart3_tx_state_t cur_usart3_tx_state;
+volatile usart3_tx_state_t cur_usart3_rx_state;
+volatile uint8_t received_len = 0;
 
-uint8_t parse_protocol_frame(void)
+error_code_t parse_protocol_frame(message_code_t * msg_code, uint8_t * payload_len)
 {
     if (received_len < 5)
         return INC_FRAME_LEN;
@@ -17,17 +19,17 @@ uint8_t parse_protocol_frame(void)
     if (uart_rx_buf[0] != PROTOCOL_START_BYTE)
         return INC_START_BYTE;
 
-    uint8_t msg_code = uart_rx_buf[1];
+    *msg_code = uart_rx_buf[1];
 
-    if (msg_code != START_CMD &&
-        msg_code != STOP_CMD &&
-        msg_code != CALIB_CMD){
+    if (*msg_code != START_CMD &&
+        *msg_code != STOP_CMD &&
+        *msg_code != CALIB_CMD){
         
-            return INC_MSG_CODE;
+        return INC_MSG_CODE;
     }
 
-    uint8_t payload_len = uart_rx_buf[2];
-    uint16_t expected_len = 3 + payload_len + 2;
+    *payload_len = uart_rx_buf[2];
+    uint16_t expected_len = 3 + *payload_len + 2;
 
     if (received_len != expected_len)
         return INC_FRAME_LEN;
@@ -35,24 +37,18 @@ uint8_t parse_protocol_frame(void)
     if (CRC16_Calculate((uint8_t *)uart_rx_buf, received_len) != 0)
         return INC_CRC;
 
-    parsed_msg_code = msg_code;
-    parsed_payload_len = payload_len;
-
     return NO_ERROR;
 }
 
 
 
-uint8_t GetUartParsedMsgCode(void){
-    return parsed_msg_code;
-}
-
+/* DMA TX stream */
 void DMA1_Stream3_IRQHandler(void){
     if (DMA1->LISR & DMA_LISR_TCIF3){
         DMA1_Stream3->CR &= ~DMA_SxCR_EN;
         while(DMA1_Stream3->CR & DMA_SxCR_EN);
         DMA1->LIFCR = DMA_LIFCR_CTCIF3;
-        cur_usart3_state = USART3_FREE;
+        cur_usart3_tx_state = USART3_TX_FREE;
     }
 }
 
@@ -60,11 +56,11 @@ void DMA1_Stream3_IRQHandler(void){
 void  USART3_IRQHandler(void){
     if (USART3->ISR & USART_ISR_IDLE){
         USART3->ICR = USART_ICR_IDLECF;
-        cur_usart3_state = USART3_DATA_RECEIVED;
+        cur_usart3_rx_state = USART3_RX_DATA_RECEIVED;
         //USART3->ICR = USART_ICR_RTOCF;
         DMA1_Stream1->CR &= ~DMA_SxCR_EN;
         while(DMA1_Stream1->CR & DMA_SxCR_EN);
-        received_len = RX_BUF_SIZE  - DMA1_Stream1->NDTR;
+        received_len = RX_BUF_SIZE - DMA1_Stream1->NDTR;
         DMA1_Stream1->NDTR = RX_BUF_SIZE;
         DMA1_Stream1->CR |= DMA_SxCR_EN;
     }
@@ -87,11 +83,11 @@ void USART3_Init(void){
     DMA1_Stream1->CR &= ~DMA_SxCR_EN;
     while(DMA1_Stream1->CR & DMA_SxCR_EN);
     
-    //Enable usart3 TX channel 4 stream 3; RX channel 4 stream 1
+    // Enable usart3 TX channel 4 stream 3; RX channel 4 stream 1
     DMA1_Stream3->CR |= 4U << DMA_SxCR_CHSEL_Pos;
     DMA1_Stream1->CR |= 4U << DMA_SxCR_CHSEL_Pos;
     
-    //MSize = PSize = 8 bit; Mem incr enabled; mem -> perif; TC int enable
+    // MSize = PSize = 8 bit; Mem incr enabled; mem -> perif; TC int enable
     DMA1_Stream3->CR |= DMA_SxCR_MINC | DMA_SxCR_TCIE | (1U << DMA_SxCR_DIR_Pos);
     DMA1_Stream1->CR |= DMA_SxCR_MINC;
 
@@ -138,13 +134,13 @@ void USART3_Init(void){
     //USART3->ICR = USART_ICR_IDLECF;
     delay_ms(1000);
     //while(USART3->ISR & USART_ISR_IDLE);
-    cur_usart3_state = USART3_FREE;
+    cur_usart3_tx_state = USART3_TX_FREE;
     //DMA1_Stream1->CR |= DMA_SxCR_EN;
 }
 
 
 void transmit_byte_usart3(uint8_t data){
-    cur_usart3_state = USART3_TRANSMITING;
+    cur_usart3_tx_state = USART3_TX_TRANSMITING;
     DMA1_Stream3->CR &= ~DMA_SxCR_EN;
     while(DMA1_Stream3->CR & DMA_SxCR_EN);
     DMA1->LIFCR = DMA_LIFCR_CTCIF3;
@@ -166,7 +162,7 @@ void transmit_byte_usart3_debug(uint8_t data){
 }
 
 void transmit_data_usart3(uint8_t* data_buffer, uint8_t len){
-    cur_usart3_state = USART3_TRANSMITING;
+    cur_usart3_tx_state = USART3_TX_TRANSMITING;
     DMA1_Stream3->CR &= ~ DMA_SxCR_EN;
     while(DMA1_Stream3->CR & DMA_SxCR_EN);
     DMA1->LIFCR = DMA_LIFCR_CTCIF3;
@@ -177,7 +173,7 @@ void transmit_data_usart3(uint8_t* data_buffer, uint8_t len){
 }
 
 void transmit_control_msg_usart3(uint8_t msg_code, uint8_t msg_data){
-    cur_usart3_state = USART3_TRANSMITING;
+    cur_usart3_tx_state = USART3_TX_TRANSMITING;
     uint8_t ack_msg[6] = {PROTOCOL_START_BYTE, 
                           msg_code, 
                           0x01, 

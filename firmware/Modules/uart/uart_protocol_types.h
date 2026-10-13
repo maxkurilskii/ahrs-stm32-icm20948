@@ -1,51 +1,31 @@
 #ifndef UART_PROTOCOL_TYPES_H
 #define UART_PROTOCOL_TYPES_H
-#include <stdint.h>
+// #include <stdint.h>
+
+/* -------------------------- PROTOCOL FRAME STRUCTURE -----------------------------*/
+// | START BYTE | MSG_CODE BYTE | DATA LEN BYTE | ... DATA BYTES ... | CRC_H | CRC_L | 
+
+// Min bytes per frame: 5 (data can be left -> status msg: )
 
 #define PROTOCOL_START_BYTE  0x23 //35 or b'#'
 
-typedef enum{
-    IMU_MEAS  = 0x42, // only one of the meas(raw/scaled/euler/quaternion) 
-    START_CMD = 0x10,
-    STOP_CMD  = 0x11,
-    ACK       = 0x12,
-    ERROR_ST     = 0x13,
-    CALIB_CMD = 0x14,   
-}message_code_t ;
 
 typedef enum{
-    NO_ERROR,
+    START_CMD = 0x10,   // (request msg) start publishing imu measurements (only one of: raw/scaled/euler/quaternion) 
+    STOP_CMD  = 0x11,   // (request msg) stop publishing imu measurements
+    IMU_MEAS  = 0x42,   // (responce msg) 
+    ERROR_ST  = 0x13,   // (responce msg) error status
+    CALIB_CMD = 0x14,   // (request msg) calibrate magnetometer (and gyroscope) + start publishing scaled/raw imu measurements 
+}message_code_t;
+
+typedef enum{
+    NO_ERROR,           // 0 used as acknowledge msg (tests)
     INC_START_BYTE,
     INC_MSG_CODE,
     INC_DATA_LEN,
     INC_CRC,
     INC_FRAME_LEN
 } error_code_t;
-
-typedef union{
-    uint8_t raw_bytes[6];
-    struct{
-        uint8_t start_byte;
-        uint8_t msg_code;
-        uint8_t data_len;
-        uint8_t data;
-        uint8_t crc_h;
-        uint8_t crc_l;
-    }msg_byte;
-}tx_ack_msg_t;
-
-
-typedef union{
-    uint8_t raw_bytes[6];
-    struct{
-        uint8_t start_byte;
-        uint8_t msg_code;
-        uint8_t data_len;
-        uint8_t err_code;
-        uint8_t crc_h;
-        uint8_t crc_l;
-    }msg_byte;
-}tx_error_msg_t;
 
 
 #endif
