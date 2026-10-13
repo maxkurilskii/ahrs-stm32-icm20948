@@ -1,0 +1,28 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "cwd": "${workspaceRoot}",
+            "executable": "./build/AHRS_STM32F7.elf",
+            "name": "Debug with OpenOCD",
+            "request": "launch",
+            "type": "cortex-debug",
+
+            "gdbPath": "/opt/arm-gnu-toolchain-15.3.rel1-x86_64-arm-none-eabi/bin/arm-none-eabi-gdb",
+            
+            "servertype": "openocd",
+            "serverpath": "/opt/openocd/bin/openocd",
+            "searchDir": [
+                "/opt/openocd/share/openocd/scripts"
+            ],
+            "configFiles": ["interface/stlink-v2-1.cfg", "target/stm32f7x.cfg"],
+            
+            "runToEntryPoint": "main",
+
+            "showDevDebugOutput": "none"
+        }
+    ]
+}
