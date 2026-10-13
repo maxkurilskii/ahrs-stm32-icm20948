@@ -1,0 +1,25 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            
+            "defines": ["STM32F767xx"],
+            "compilerPath": "/opt/arm-gnu-toolchain-15.3.rel1-x86_64-arm-none-eabi/bin/arm-none-eabi-gcc",
+            "cStandard": "gnu17",
+            "cppStandard": "gnu++14",
+            "intelliSenseMode": "linux-gcc-x64",
+
+            "includePath": [
+                "${workspaceFolder}/Core/Inc",
+                "${workspaceFolder}/Core/Src",
+                "${workspaceFolder}/Drivers/CMSIS/Include",
+                "${workspaceFolder}/Drivers/CMSIS/Device/ST/STM32F7xx/Include",
+                "${workspaceFolder}/Modules/app",
+                "${workspaceFolder}/Modules/imu_ism20948",
+                "${workspaceFolder}/Modules/uart",
+                "${workspaceFolder}/Middlewares/Fusion"
+            ]
+        }
+    ],
+    "version": 4
+}

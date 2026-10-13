@@ -1,0 +1,56 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "shell",
+			"label": "Build",
+            "group": "build",
+			"command": "make",
+			"args": ["all"],
+			"problemMatcher": [
+				"$gcc"
+			],
+            "options": {
+            "statusbar": { "color" : "#aeaaaa"  , "label" : "Build"}
+            }
+        },
+
+        {
+			"type": "shell",
+			"label": "Clean",
+            "group": "build",
+			"command": "make",
+			"args": ["clean"],
+			"problemMatcher": [
+				"$gcc"
+			],
+            "options": {
+            "statusbar": { "color" : "#aeaaaa"  , "label" : "Clean"}
+            }
+        },
+
+        {
+			"type": "shell",
+			"label": "Flash",
+            "group": "build",
+			"command": "/opt/openocd/bin/openocd",
+			 "args": [
+                "-s",
+                "/opt/openocd/share/openocd/scripts",
+                "-f",
+                "interface/stlink-v2-1.cfg",
+                "-f",
+                "target/stm32f7x.cfg",
+                "-c",
+                "program build/AHRS_STM32F7.elf reset exit"
+                // "program build/AHRS_STM32F7.elf verify reset exit"
+            ],
+			"problemMatcher": [
+				"$gcc"
+			],
+            "options": {
+            "statusbar": { "color" : "#aeaaaa"  , "label" : "Flash"}
+            }
+        }
+	]
+}
