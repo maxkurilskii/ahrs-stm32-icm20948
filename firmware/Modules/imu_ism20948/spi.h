@@ -13,11 +13,11 @@
 #define SPI1_CS_HIGH    GPIOA->BSRR = GPIO_BSRR_BS4
 
 typedef enum{
-    SPI_FREE,
-    SPI_READY,
-    SPI_WRITING,
-    SPI_READING,
-    SPI_DATA_READY
+    SPI_FREE,           // After receiving AND processing data operations are finished
+    SPI_READY,          // Alternative name is SPI_TASK: tasked to read data from imu sensor (imu timer sets)
+    SPI_READING,        // in progress of reading data 
+    SPI_DATA_READY,     // dma sets after Transfer Complete 
+    SPI_WRITING         // defines case for writing to imu device (only during init of imu) 
 } spi_state_t;
 
 extern volatile spi_state_t cur_spi_state;

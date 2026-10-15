@@ -26,10 +26,14 @@ def calculate_crc16(data_buf: bytearray, data_len = None) -> int:
         crc = ((crc << 8) ^ TABLE_CRC16[index]) & 0xFFFF
     return crc
 
-
+# test start msg: 
+# 23 10 08 60 da 50 2f 62 5b 06 00 29 84
+# test stop msg:
+# 23 11 08 60 da 50 2f 62 5b 06 00 46 c1
 
 if __name__ == "__main__":
     test_data = bytearray([49, 50, 51, 52, 53, 54, 55, 56, 57]) #123456789 in ascii
+    # test_data = bytearray([0x23, 0x11, 0x08, 0x60, 0xda, 0x50, 0x2f, 0x62, 0x5b, 0x06, 0x00])
     crc = calculate_crc16(test_data, 9)
     print(f"CRC16 for 123456789: {crc} = 0x{crc:4x} = 0b{crc:016b}") #should be 0x29b1
     # PROOF - apped crc bytes to data (in MSByte format!) 

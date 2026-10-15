@@ -8,7 +8,7 @@ volatile uint8_t uart_rx_buf[RX_BUF_SIZE] = {0};
 
 /* Global UART3 STATE */
 volatile usart3_tx_state_t cur_usart3_tx_state;
-volatile usart3_tx_state_t cur_usart3_rx_state;
+volatile usart3_rx_state_t cur_usart3_rx_state;
 volatile uint8_t received_len = 0;
 
 error_code_t parse_protocol_frame(message_code_t * msg_code, uint8_t * payload_len)
@@ -23,7 +23,7 @@ error_code_t parse_protocol_frame(message_code_t * msg_code, uint8_t * payload_l
 
     if (*msg_code != START_CMD &&
         *msg_code != STOP_CMD &&
-        *msg_code != CALIB_CMD){
+        *msg_code != CALIB_CMD && *msg_code != UPD_TIME_CMD){
         
         return INC_MSG_CODE;
     }
@@ -36,6 +36,8 @@ error_code_t parse_protocol_frame(message_code_t * msg_code, uint8_t * payload_l
 
     if (CRC16_Calculate((uint8_t *)uart_rx_buf, received_len) != 0)
         return INC_CRC;
+    
+    received_len = 0;
 
     return NO_ERROR;
 }
@@ -61,7 +63,9 @@ void  USART3_IRQHandler(void){
         DMA1_Stream1->CR &= ~DMA_SxCR_EN;
         while(DMA1_Stream1->CR & DMA_SxCR_EN);
         received_len = RX_BUF_SIZE - DMA1_Stream1->NDTR;
+        DMA1->LIFCR = DMA_LIFCR_CTCIF1;
         DMA1_Stream1->NDTR = RX_BUF_SIZE;
+        // __DSB();
         DMA1_Stream1->CR |= DMA_SxCR_EN;
     }
 }
@@ -192,7 +196,7 @@ void transmit_control_msg_usart3(uint8_t msg_code, uint8_t msg_data){
 }
 
 void transmit_imu_sample_usart3(imu_sample_t* imu_m){
-    
+        cur_usart3_tx_state = USART3_TX_TRANSMITING;
 		uint8_t *p_acc  = (uint8_t*)imu_m->accel;
 		uint8_t *p_gyro = (uint8_t*)imu_m->gyro;
         uint8_t *p_mag  = (uint8_t*)imu_m->mag;
@@ -230,6 +234,7 @@ void transmit_imu_sample_usart3(imu_sample_t* imu_m){
 }
 
 void transmit_euler_orient_usart3(imu_euler_orient_t* eu){
+    cur_usart3_tx_state = USART3_TX_TRANSMITING;
     //start(1) + cmd(1) + len(1) + data[20] + crc(2)
     uint8_t *p_roll  = (uint8_t*)&eu->roll;
     uint8_t *p_pitch = (uint8_t*)&eu->pitch;
@@ -266,6 +271,7 @@ void transmit_euler_orient_usart3(imu_euler_orient_t* eu){
 
 
 void transmit_quater_orient_usart3(imu_quater_orient_t* q){
+    cur_usart3_tx_state = USART3_TX_TRANSMITING;
     //start(1) + cmd(1) + len(1) + data[24] + crc(2) 
     uint8_t *p_w     = (uint8_t*)&q->w;
     uint8_t *p_x     = (uint8_t*)&q->x;

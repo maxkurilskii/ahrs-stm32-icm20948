@@ -33,7 +33,6 @@ void delay_ms(uint16_t millis)
 
 int main(void)
 {
-
     SysClockInit();
     SysTickInit();
     LEDs_Init();
@@ -45,7 +44,7 @@ int main(void)
     uint64_t master_ref_time = 0;
     uint32_t stm_ref_time = 0;
 
-    message_code_t cmd_code;
+    message_code_t msg_code;
     error_code_t err_code;
     uint8_t payload_len;
     
@@ -57,73 +56,102 @@ int main(void)
 
     while (1)
     {
+        /* wait for START CMD message */
         while (cur_usart3_rx_state != USART3_RX_DATA_RECEIVED) __NOP();
+        cur_usart3_rx_state = USART3_RX_FREE;
         // save app timestamp
         stm_ref_time = usCounter * SYS_TICK_PERIOD_US;
 
-        err_code = parse_protocol_frame(&cmd_code, &payload_len);
+        err_code = parse_protocol_frame(&msg_code, &payload_len);
         if (!(err_code == NO_ERROR))
         {
             transmit_control_msg_usart3(ERROR_ST, err_code);
-          
-        }else{
+            continue;
+        } else {
             /* NO_ERROR = 0x00 -> ack msg */
             transmit_control_msg_usart3(ERROR_ST, NO_ERROR);
             // if START CMD was received -> save host time in received frame -> leave cycle
-            if(cmd_code == START_CMD){
+            if(msg_code == START_CMD){
                 uint8_t *frame = get_usart_rx_data();
                 memcpy((uint8_t *)&master_ref_time, &frame[3], 8); // skip first 3 bytes
-                break;
             }
-            // else if(cmd_code == CALIB_CMD){
-
-            // }
-        }
-        cur_usart3_rx_state = USART3_RX_FREE;
-    }
-
-    delay_ms(500);
-
-    IMU_Timer_Start();
-
-    while (1)
-    {
-        if (cur_spi_state == SPI_READY)
-        {
-            cur_spi_state = SPI_READING;
-            // save time in imu sample before taking measurements
-            uint32_t now = usCounter * SYS_TICK_PERIOD_US;
-            imu_sample.time_us = (now - stm_ref_time) + master_ref_time;
-            start_reading_imu_measurement();
+            else if(msg_code == CALIB_CMD){
+                // TODO:   
+                //  - init calibration: gyro + magnet + accel(?)
+                //  - transnmit back measurements during calibration
+                //  - transmit back resulted biases (?) to check validness of calculation
+                continue;
+            }
+             else{
+                continue;
+            }
+            
         }
 
-        if (cur_spi_state == SPI_DATA_READY)
+        delay_ms(500);
+        IMU_Timer_Start();
+
+        while (1)
         {
-            imu_scaled_meas_t *meas = get_imu_corrected_measurement();
-            for (uint16_t i = 0; i < 3; i++){
-                imu_sample.accel[i] = meas->s_accel[i];
-                imu_sample.gyro[i] = meas->s_gyro[i];
-                imu_sample.mag[i] = meas->s_mag[i];
+            if (cur_spi_state == SPI_READY)
+            {
+                cur_spi_state = SPI_READING;
+                // save time in imu sample before taking measurements
+                uint32_t now = usCounter * SYS_TICK_PERIOD_US;
+                imu_sample.time_us = (now - stm_ref_time) + master_ref_time;
+                start_reading_imu_measurement();
             }
 
-            imu_sample_cnt++;
-            update_orientation(&imu_sample); // may take > 1-5 ms (?)
-            cur_spi_state = SPI_FREE;
-        }
+            if (cur_spi_state == SPI_DATA_READY)
+            {
+                imu_scaled_meas_t *meas = get_imu_corrected_measurement();
+                for (uint16_t i = 0; i < 3; i++){
+                    imu_sample.accel[i] = meas->s_accel[i];
+                    imu_sample.gyro[i] = meas->s_gyro[i];
+                    imu_sample.mag[i] = meas->s_mag[i];
+                }
 
-        if ((imu_sample_cnt * TIM9_PERIOD_MS >= UART_TX_PERIOD_MS) &&
-            (cur_usart3_tx_state == USART3_TX_FREE) && (cur_spi_state == SPI_FREE))
-        {
-            imu_sample_cnt = 0;
-            #if SEND_MODE == IMU_SCALED_MEAS
-                transmit_imu_sample_usart3(&imu_sample);
-            #elif SEND_MODE == EULER_ORIENTATION
-                transmit_euler_orient_usart3(get_euler_orient_sample());
-            #elif SEND_MODE == QUATERNION_ORIENTATION
-                transmit_quater_orient_usart3(get_quater_orient_sample());
-            #endif
+                imu_sample_cnt++;
+                update_orientation(&imu_sample); // may take > 1-5 ms (?)
+                cur_spi_state = SPI_FREE;
+            }
+
+            if ((imu_sample_cnt * TIM9_PERIOD_MS >= UART_TX_PERIOD_MS) &&
+                (cur_usart3_tx_state == USART3_TX_FREE) && (cur_spi_state == SPI_FREE))
+            {
+                imu_sample_cnt = 0;
+                #if SEND_MODE == IMU_SCALED_MEAS
+                    transmit_imu_sample_usart3(&imu_sample);
+                #elif SEND_MODE == EULER_ORIENTATION
+                    transmit_euler_orient_usart3(get_euler_orient_sample());
+                #elif SEND_MODE == QUATERNION_ORIENTATION
+                    transmit_quater_orient_usart3(get_quater_orient_sample());
+                #endif
+            }
+
+            if(cur_usart3_rx_state == USART3_RX_DATA_RECEIVED){
+                // upd stm timestmp in case if cmd is to update master_ref
+                stm_ref_time = usCounter * SYS_TICK_PERIOD_US;
+                cur_usart3_rx_state = USART3_RX_FREE;
+                err_code = parse_protocol_frame(&msg_code, &payload_len);
+                if(!(err_code == NO_ERROR)){
+                    transmit_control_msg_usart3(ERROR_ST, err_code);
+                } 
+                else if(msg_code == STOP_CMD){
+                    IMU_Timer_Stop();
+                    delay_ms(500);
+                    break;
+                } 
+                else if(msg_code == UPD_TIME_CMD){
+                    uint8_t *frame = get_usart_rx_data();
+                    memcpy((uint8_t *)&master_ref_time, &frame[3], 8); // skip first 3 bytes
+                }
+                //TODO: else  break; // ???
+            }
+                
         }
     }
+ 
 
     return 0;
 }

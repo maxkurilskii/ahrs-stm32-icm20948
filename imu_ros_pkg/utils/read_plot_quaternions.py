@@ -67,7 +67,8 @@ def main(args):
                 while(True):
                     reference_time_us = time.time_ns() // 10**3 # int object in the end
                     pkg = reference_time_us.to_bytes(8, byteorder='little') #cast to uint64 in little-endian
-                    host_com.uart_write_package(msg_code = MessageCode.START_CMD.value, data = pkg) # 23 10 08 60 da 50 2f 62 5b 06 00 29 84
+                    # 23 10 08 60 da 50 2f 62 5b 06 00 29 84 (test start msg), 23 11 08 60 da 50 2f 62 5b 06 00 46 c1 (test stop msg)
+                    host_com.uart_write_package(msg_code = MessageCode.START_CMD.value, data = pkg) 
                     try:
                         rx_msg = host_com.uart_read_package()
                         # Expected ACK: # [start_byte + ERROR_STATUS + data_len + error_code + CRC]

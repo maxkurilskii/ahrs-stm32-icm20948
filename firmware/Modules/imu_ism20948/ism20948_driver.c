@@ -171,10 +171,11 @@ void IMU20948_Init(void){
     configure_magnetometer();
     // Reset USER BANK reg to default bank (0)
     spi_write_async(REG_BANK_SEL_ADD, (0x00 << REG_BANK_SEL_USER_BANK_Pos));
-    transmit_byte_usart3_debug(get_register_value(REG_BANK_SEL_ADD));
-    transmit_byte_usart3_debug(get_register_value(PWR_MGMT_1_ADD));
-    transmit_byte_usart3_debug(get_register_value(USER_CTRL_ADD));
-    transmit_byte_usart3_debug(get_register_value(WHO_AM_I));
+    // transmit_byte_usart3_debug(get_register_value(REG_BANK_SEL_ADD));
+    // transmit_byte_usart3_debug(get_register_value(PWR_MGMT_1_ADD));
+    // transmit_byte_usart3_debug(get_register_value(USER_CTRL_ADD));
+    // transmit_byte_usart3_debug(get_register_value(WHO_AM_I));
+    
     /* Set initial state */
     cur_spi_state = SPI_FREE;
     
