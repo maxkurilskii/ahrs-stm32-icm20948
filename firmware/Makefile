@@ -58,7 +58,6 @@ ASMM_SOURCES =
 #######################################
 # binaries
 #######################################
-# GCC_PATH = "/opt/arm-gnu-toolchain-15.3.rel1-x86_64-arm-none-eabi/bin/"
 PREFIX = arm-none-eabi-
 # The gcc compiler bin path can be either defined in make command via GCC_PATH variable (> make GCC_PATH=xxx)
 # either it can be added to the PATH environment variable.
