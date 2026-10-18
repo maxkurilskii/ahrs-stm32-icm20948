@@ -25,7 +25,9 @@ typedef enum{
     INC_MSG_CODE,
     INC_DATA_LEN,
     INC_CRC,
-    INC_FRAME_LEN
+    INC_FRAME_LEN,
+    INC_FRAME_CASE,
+    NOT_ENOUGH_DATA
 } error_code_t;
 
 
