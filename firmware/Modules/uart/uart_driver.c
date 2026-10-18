@@ -1,76 +1,46 @@
 #include "uart_driver.h"
 
 /*  UART3 TX BUFFER */
-uint8_t uart_tx_dma_buf[100] = {0};
+uint8_t uart_tx_dma_buf[TX_BUF_SIZE] = {0};
 
 /*  UART3 RX BUFFER */
 volatile uint8_t uart_rx_dma_buf[RX_BUF_SIZE] = {0};
 
 /*  UART3 RX RING BUFFER */
-volatile RingBuf rx_ring_buffer[RX_BUF_SIZE];
-rb_init(rx_ring_buffer);
+volatile RingBuf rx_ring_buffer;
 
 /* Global UART3 STATE */
 volatile usart3_tx_state_t cur_usart3_tx_state;
 volatile usart3_rx_state_t cur_usart3_rx_state;
 volatile uint8_t received_len = 0;
 
-// error_code_t parse_protocol_frame(uint8_t *frame, message_code_t *msg_code, uint8_t *payload_len)
-// {
 
-//     if (received_len < 5)
-//         return INC_FRAME_LEN;
-
-//     if (uart_rx_buf->arr[0] != PROTOCOL_START_BYTE)
-//         return INC_START_BYTE;
-
-//     *msg_code = uart_rx_buf->arr[1];
-
-//     if (*msg_code != START_CMD &&
-//         *msg_code != STOP_CMD &&
-//         *msg_code != CALIB_CMD && *msg_code != UPD_TIME_CMD)
-//     {
-
-//         return INC_MSG_CODE;
-//     }
-
-//     *payload_len = uart_rx_buf->arr[2];
-//     uint16_t expected_len = 3 + *payload_len + 2;
-
-//     if (received_len != expected_len)
-//         return INC_FRAME_LEN;
-
-//     if (CRC16_Calculate(uart_rx_buf->arr, received_len) != 0)
-//         return INC_CRC;
-
-//     received_len = 0;
-
-//     return NO_ERROR;
-// }
-
-void usart_write_to_ring_buffer(uint32_t ndtr)
+void usart_write_to_ring_buffer()
 {
     static uint32_t last_write_ind = 0;
-    uint32_t new_write_ind = RX_BUF_SIZE - ndtr; // should be always >= 0
+    uint32_t new_write_ind = RX_BUF_SIZE - DMA1_Stream1->NDTR; // should be always >= 0
+    if  (new_write_ind == last_write_ind)
+        return;
+
     if (new_write_ind > last_write_ind)
     {
         for (uint32_t i = last_write_ind; i < new_write_ind; ++i)
         {
-            rb_write_data(&rx_ring_buffer, uart_rx_buf[i]);
+            rb_write_data(&rx_ring_buffer, uart_rx_dma_buf[i]);
         }
     }
-    /* Received data wraped around usart_rx_buffer -> need to copy 2 parts */
+    /* Received data wraped around usart_rx_dma_buffer -> need to copy 2 parts */
     else if (new_write_ind < last_write_ind)
     {
-        // copy the farthest to the end of usart_rx_buffer
+        // copy the farthest to the end of usart_rx_dma_buffer
         for (uint32_t i = last_write_ind; i < RX_BUF_SIZE; i++)
         {
-            rb_write_data(&rx_ring_buffer, uart_rx_buf[i]);
+            rb_write_data(&rx_ring_buffer, uart_rx_dma_buf[i]);
         }
-        // copy the closest to the start of usart_rx_buffer
+        // copy the closest to the start of usart_rx_dma_buffer
         for (uint32_t i = 0; i < new_write_ind; i++)
         {
-            rb_write_data(&rx_ring_buffer, uart_rx_buf[i]);
+            rb_write_data(&rx_ring_buffer, uart_rx_dma_buf[i]);
         }
     }
 
@@ -80,25 +50,24 @@ void usart_write_to_ring_buffer(uint32_t ndtr)
 volatile uint32_t ndtr;
 
 /* DMA RX Stream 1 */
-void DMA1_Steam_IRQHandler(void)
+void DMA1_Stream1_IRQHandler(void)
 {
     // Half Transfer Complete
     if (DMA1->LISR & DMA_LISR_HTIF1)
     {
         DMA1->LIFCR = DMA_LIFCR_CHTIF1;
         // Copying ...
-        if (RX_BUF_SIZE != (ndtr = DMA1_Stream1->NDTR))
-            usart_write_to_ring_buffer(ndtr);
-        cur_usart3_tx_state = USART3_RX_FREE;
+        usart_write_to_ring_buffer();
+
+        cur_usart3_rx_state = USART3_RX_DATA_RECEIVED;
     }
     // Transfer Complete
     if (DMA1->LISR & DMA_LISR_TCIF1)
     {
         DMA1->LIFCR = DMA_LIFCR_CTCIF1;
         // Copying ...
-        if (RX_BUF_SIZE != (ndtr = DMA1_Stream1->NDTR))
-            usart_write_to_ring_buffer(ndtr);
-        cur_usart3_tx_state = USART3_RX_FREE;
+        usart_write_to_ring_buffer();
+        cur_usart3_rx_state = USART3_RX_DATA_RECEIVED;
     }
 }
 
@@ -131,8 +100,7 @@ void USART3_IRQHandler(void)
         // DMA1->LIFCR = DMA_LIFCR_CTCIF1;
 
         // Copying ...
-        if (RX_BUF_SIZE != (ndtr = DMA1_Stream1->NDTR))
-            usart_write_to_ring_buffer(DMA1_Stream1->NDTR);
+        usart_write_to_ring_buffer();
 
         cur_usart3_rx_state = USART3_RX_DATA_RECEIVED;
     }
@@ -140,7 +108,7 @@ void USART3_IRQHandler(void)
 
 uint8_t *get_usart_rx_data(void)
 {
-    return (uint8_t *)uart_rx_buf;
+    return (uint8_t *)uart_tx_dma_buf;
 }
 
 void USART3_Init(void)
@@ -149,6 +117,7 @@ void USART3_Init(void)
     /* ---------------- DMA1 for USART3 init -------------- */
     RCC->AHB1ENR |= RCC_AHB1ENR_DMA1EN;
 
+    // Disable DMA1 Stream1 for TX, DMA1 Stream1 for RX dur config
     DMA1_Stream3->CR &= ~DMA_SxCR_EN;
     while (DMA1_Stream3->CR & DMA_SxCR_EN)
         ;
@@ -162,18 +131,16 @@ void USART3_Init(void)
 
     /* TX congif: MSize = PSize = 8 bit; Mem incr enabled; mem -> perif; TC int enable */
     DMA1_Stream3->CR |= DMA_SxCR_MINC | DMA_SxCR_TCIE | (1U << DMA_SxCR_DIR_Pos);
-
+    DMA1_Stream3->PAR = (uint32_t)&(USART3->TDR);
+    DMA1_Stream3->M0AR = (uint32_t)uart_tx_dma_buf;
+    DMA1_Stream3->NDTR = X_BUF_SIZE;
+    
     /* RX config:  MSize = PSize = 8 bit; Mem inc; Perif->Mem;
         CIRC mode: data wraps around automatically (end -> start)
         HT/TC interrupts: notify app to save data before buffer overwrite */
     DMA1_Stream1->CR |= DMA_SxCR_MINC | DMA_SxCR_CIRC | DMA_SxCR_TCIE | DMA_SxCR_HTIE;
-
-    // DMA1_Stream3->PAR = (uint32_t)(volatile uint8_t*)&(USART3->TDR);
-    DMA1_Stream3->PAR = (uint32_t)&(USART3->TDR);
-    DMA1_Stream3->M0AR = (uint32_t)uart_tx_dma_buf;
-
     DMA1_Stream1->PAR = (uint32_t)&(USART3->RDR);
-    DMA1_Stream1->M0AR = (uint32_t)uart_rx_buf; // pointer to array, not stucture
+    DMA1_Stream1->M0AR = (uint32_t)uart_rx_dma_buf; // pointer to array, not stucture
     DMA1_Stream1->NDTR = RX_BUF_SIZE;
 
     // Globally enable DMA TX and RX Interrupts
@@ -215,7 +182,7 @@ void USART3_Init(void)
     NVIC_EnableIRQ(USART3_IRQn);
 
     // Enable DMA RX before USART3
-    DMA1_Stream0->CR |= DMA_SxCR_EN;
+    DMA1_Stream1->CR |= DMA_SxCR_EN;
     // Turn on USART3
     USART3->CR1 |= USART_CR1_UE;
 
@@ -226,6 +193,10 @@ void USART3_Init(void)
     // set TX and RX FSM flags
     cur_usart3_tx_state = USART3_TX_FREE;
     cur_usart3_rx_state = USART3_RX_FREE;
+
+    /* Inittialize ring buffer for RX */
+    rb_init(&rx_ring_buffer);
+    
 }
 
 void transmit_byte_usart3(uint8_t data)

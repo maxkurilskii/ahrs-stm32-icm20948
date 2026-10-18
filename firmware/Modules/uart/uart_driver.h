@@ -3,13 +3,15 @@
 
 #include "common.h"
 #include "uart_protocol_types.h"
-#include "ism20948_driver.h"
+// #include "ism20948_driver.h"
+#include "imu_data_types.h"
 #include "data_prepr.h"
 #include "crc16.h"
 #include "ring_buf.h"
 
-#define UART_TX_PERIOD_MS 20
-#define RX_BUF_SIZE  100
+#define UART_TX_PERIOD_MS   20
+#define TX_BUF_SIZE         100
+#define RX_BUF_SIZE         20
 
 typedef enum{
     USART3_TX_FREE,            // after transmition of data (DMA irq resets)
@@ -27,7 +29,7 @@ typedef enum{
 /* Global UART3 STATE */
 extern volatile usart3_tx_state_t cur_usart3_tx_state;
 extern volatile usart3_rx_state_t cur_usart3_rx_state;
-extern volatile RingBuf rx_ring_buffer[RX_BUF_SIZE];
+extern volatile RingBuf rx_ring_buffer;
 
 void USART3_Init(void);
 
@@ -42,11 +44,10 @@ void transmit_quater_orient_usart3(imu_quater_orient_t* q);
 void transmit_byte_usart3_debug(uint8_t data);
 
 uint8_t* get_usart_rx_data(void);
-error_code_t parse_protocol_frame(uint8_t *frame, message_code_t * msg_code, uint8_t * payload_len);
 uint8_t GetUsartParsedMsgCode(void);
 
 void transmit_control_msg_usart3(uint8_t msg_code, uint8_t msg_data);
 
-void usart_write_to_ring_buffer(uint32_t left_len);
+void usart_write_to_ring_buffer();
 
 #endif
