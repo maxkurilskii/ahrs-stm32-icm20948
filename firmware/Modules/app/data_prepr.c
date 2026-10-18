@@ -57,16 +57,19 @@ void update_orientation(imu_sample_t* meas){
     }
     fusion_time_us = meas->time_us; //copy
 
-    FusionVector gyroscope = {meas->gyro[0], 
-                              meas->gyro[1], 
-                              meas->gyro[2]};
-    FusionVector accelerometer = {meas->accel[0], 
-                                  meas->accel[1], 
-                                  meas->accel[2]};
+    FusionVector gyroscope = {
+                        .axis.x = meas->gyro[0], 
+                        .axis.y = meas->gyro[1], 
+                        .axis.z =  meas->gyro[2]};
+    FusionVector accelerometer = {
+                        .axis.x = meas->accel[0], 
+                        .axis.y = meas->accel[1], 
+                        .axis.z = meas->accel[2]};
 
-    FusionVector magnetometer = {meas->mag[0], 
-                                 meas->mag[1],
-                                 meas->mag[2]};
+    FusionVector magnetometer = {
+                        .axis.x = meas->mag[0], 
+                        .axis.y = meas->mag[1],
+                        .axis.z = meas->mag[2]};
     FusionAhrsUpdate(&ahrs, gyroscope, accelerometer, magnetometer);
 
     //FusionAhrsUpdateNoMagnetometer(&ahrs, gyroscope, accelerometer);

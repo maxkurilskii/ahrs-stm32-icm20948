@@ -1,11 +1,11 @@
 #include "ring_buf.h"
 
 
-void rb_init(RingBuf *rb)
+void rb_init(volatile RingBuf *rb)
 {
+    rb->size = RB_SIZE;
     rb->next_write_ind = 0;
     rb->next_read_ind = 0;
-    rb->is_empty = 1;
 }
 
 
@@ -18,68 +18,80 @@ void rb_init(RingBuf *rb)
 // }
 
 
-Data rb_pick_element(RingBuf *rb)
+Data rb_pick_element(volatile RingBuf *rb)
 {
     return (rb->arr[rb->next_read_ind]);
 }
 
 
-uint8_t rb_is_full(RingBuf *rb)
+uint8_t rb_is_full(const volatile RingBuf *rb)
 {
-    // если в буфере уже есть данные И совпадают индексы 
-    return (rb->is_empty == 0) && (rb->next_write_ind == rb->next_read_ind);
+    // NOTE: In that case capacity of RING bufer is SIZE - 1 
+    return (rb->next_write_ind + 1) % rb->size  == rb->next_read_ind;
 }
 
-uint8_t rb_is_empty(RingBuf *rb)
+uint8_t rb_is_empty(const volatile RingBuf *rb)
 {
-    return rb->is_empty;
+    return rb->next_write_ind == rb->next_read_ind;
 }
 
-int rb_free_space(RingBuf *rb)
+
+int rb_available(const volatile RingBuf *rb, const uint32_t next_write_index)
 {
-    if(rb->is_empty)
+    if (rb_is_empty(rb))
+        return 0;
+
+    if (next_write_index > rb->next_read_ind)
+        return next_write_index - rb->next_read_ind;
+        
+    if (next_write_index < rb->next_read_ind)
+        return rb->size - (rb->next_read_ind - next_write_index);
+    
+    return 0;
+}
+
+
+
+int rb_free_space(const volatile RingBuf *rb)
+{
+    if (rb_is_empty(rb))
         return rb->size;
 
-    if(rb->next_write_ind > rb->next_read_ind)
+    if (rb->next_write_ind > rb->next_read_ind)
         return rb->size - (rb->next_write_ind - rb->next_read_ind);
         
-    if(rb->next_write_ind < rb->next_read_ind)
+    if (rb->next_write_ind < rb->next_read_ind)
         return rb->next_read_ind - rb->next_write_ind;
     
     return 0;
 }
 
 
-void rb_write_data(RingBuf *rb, Data val)
+void rb_write_data(volatile RingBuf *rb, Data val)
 {
-    /* Записываем даже если буфер полный -> затираем старые данные */
-    // если буфер заполнен -> сдвигаем R индекс
-    if(rb_is_full(rb)){
-            // инкрементируем Read индекс с учетом его возможного переполнения
-            rb->next_read_ind = (rb->next_read_ind + 1) % rb->size;
-    }
+    // если буфер заполнен -> не пишем
+    if(rb_is_full(rb))
+        return;
 
     rb->arr[rb->next_write_ind] = val;
     // инкрементируем Write индекс с учетом его возможного переполнения
     rb->next_write_ind = (rb->next_write_ind + 1) % rb->size;
-    
-    rb->is_empty = 0;
+
 }
 
 
-uint16_t rb_read_all_data(Data *dest, RingBuf *rb, int len)
+uint8_t rb_read_all_data(Data *dest, volatile RingBuf *rb)
 {
-    if(rb->is_empty)
+    if(rb_is_empty(rb))
         return 0;
 
-    uint16_t i = 0; // счетчик прочитанных элементов
+    uint8_t i = 0; // счетчик прочитанных элементов
     while(1){
         dest[i] = rb->arr[rb->next_read_ind];
         i++; 
         rb->next_read_ind = (rb->next_read_ind + 1) % rb->size;   
         // Если R индекс достиг W индекса -> прочитали все что было 
         if(rb->next_read_ind == rb->next_write_ind){
-            rb->is_empty = 1;
             break;
         }
     }
@@ -88,19 +100,17 @@ uint16_t rb_read_all_data(Data *dest, RingBuf *rb, int len)
 }
 
 
-uint16_t rb_read_partial_data(Data *dest, RingBuf *rb, int len)
+uint8_t rb_read_partial_data(Data *dest, volatile RingBuf *rb, int len)
 {
-    if(rb->is_empty || len <= 0)
+    if(rb_is_empty(rb) || len <= 0)
         return 0;
 
-    uint16_t i = 0; // счетчик прочитанных элементов
+    uint8_t i = 0; // счетчик прочитанных элементов
     while(i < len){
         dest[i] = rb->arr[rb->next_read_ind];
         i++; 
         rb->next_read_ind = (rb->next_read_ind + 1) % rb->size;   
-        // Если R индекс достиг W индекса -> прочитали все что было 
         if(rb->next_read_ind == rb->next_write_ind){
-            rb->is_empty = 1;
             break;
         }
     }
