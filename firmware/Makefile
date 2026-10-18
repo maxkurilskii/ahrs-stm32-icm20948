@@ -44,6 +44,8 @@ Modules/app/data_prepr.c \
 Modules/imu_ism20948/ism20948_driver.c \
 Modules/imu_ism20948/spi.c \
 Modules/uart/uart_driver.c \
+Modules/uart/ring_buf.c \
+Modules/uart/uart_parser.c \
 Modules/uart/crc16.c \
 $(wildcard Middlewares/Fusion/*.c)
 
@@ -117,7 +119,7 @@ C_INCLUDES =  \
 # compile gcc flags
 ASFLAGS = $(MCU) $(AS_DEFS) $(AS_INCLUDES) $(OPT) -Wall -fdata-sections -ffunction-sections
 
-CFLAGS += $(MCU) $(C_DEFS) $(C_INCLUDES) $(OPT) -Wall -Wextra -fdata-sections -ffunction-sections
+CFLAGS += $(MCU) $(C_DEFS) $(C_INCLUDES) $(OPT) -Wall -fdata-sections -ffunction-sections
 
 ifeq ($(DEBUG), 1)
 CFLAGS += -g -gdwarf-2

@@ -4,7 +4,7 @@
 #include "common.h"
 #include "imu_data_types.h"
 #include "spi.h"
-#include "uart_driver.h"
+// #include "uart_driver.h"
 
 //imu ism20948 registers addresses and bite field
 #define WHO_AM_I	                0x00

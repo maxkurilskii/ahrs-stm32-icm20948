@@ -259,14 +259,13 @@ static void IMU_Timer_Init(void){
 
 
 static void powerup_imu(void){ 
-    uint8_t reg_value = 0;//var to verify written data 
 	//reset all registers to def state
     spi_write_async(PWR_MGMT_1_ADD, PWR_MGMT_1_DEVICE_RESET);
     delay_ms(200); //NECCESSARY TO WAIT pin timout read/write !!!
     
     // Choose Bank 0 
     spi_write_async(REG_BANK_SEL_ADD, (0x00 << REG_BANK_SEL_USER_BANK_Pos));   
-    transmit_byte_usart3(get_register_value(REG_BANK_SEL_ADD)); // ожидаем 0x00
+    // transmit_byte_usart3(get_register_value(REG_BANK_SEL_ADD)); // ожидаем 0x00
 
     // Disable sleep mode + select clock PLL to run gyro in best performance
     spi_write_async(PWR_MGMT_1_ADD, (PWR_MGMT_1_SLEEP_OFF | PWR_MGMT_1_CLKSEL_PLL));
@@ -275,18 +274,16 @@ static void powerup_imu(void){
 	spi_write_async(USER_CTRL_ADD, 
                            (1U << USER_CTRL_I2C_IF_DIS_Pos) | 
                            (1U << USER_CTRL_I2C_MST_EN_Pos));                       
-    transmit_byte_usart3(get_register_value(PWR_MGMT_1_ADD)); //ожидаем 0x01 | 0x02 (if 0x00 - gyro won't work correctly)
-    transmit_byte_usart3(get_register_value(USER_CTRL_ADD));// ожидаем 0x30
+    // transmit_byte_usart3(get_register_value(PWR_MGMT_1_ADD)); //ожидаем 0x01 | 0x02 (if 0x00 - gyro won't work correctly)
+    // transmit_byte_usart3(get_register_value(USER_CTRL_ADD));// ожидаем 0x30
 }
 
 
 static void configure_gyro(void){
     /* ---- Gyroscope config ---- */
-    uint8_t reg_value = 0; //var to verify written data 
-
     // Choose user bank to 2 (new register table)
     spi_write_async(REG_BANK_SEL_ADD, (0x02 << REG_BANK_SEL_USER_BANK_Pos));
-    transmit_byte_usart3(get_register_value(REG_BANK_SEL_ADD)); // exp 0x20
+    // transmit_byte_usart3(get_register_value(REG_BANK_SEL_ADD)); // exp 0x20
    
 	// Select def ODR freq = 1.1 kHz -> GYRO_SMPLRT_DIV = 0 (default)
 	//spi_write(GYRO_SMPLRT_DIV_ADD, 0x00);
@@ -297,18 +294,17 @@ static void configure_gyro(void){
     //Gyro full scale +/-500 dps
     gyro_cfg1 |= GYRO_FULL_SCALE_500_DPS;
     spi_write_async(GYRO_CONFIG_1_ADD, gyro_cfg1);
-    transmit_byte_usart3(get_register_value(GYRO_CONFIG_1_ADD));  // exp 0x1B
+    // transmit_byte_usart3(get_register_value(GYRO_CONFIG_1_ADD));  // exp 0x1B
 }
 
 
 
 static void configure_accel(void){
     /* ---- Accelerometer config ---- */
-    uint8_t reg_value = 0; //var to verify written data 
     
     // Change user bank to 2 (new register table)
     spi_write_async(REG_BANK_SEL_ADD, (0x02 << REG_BANK_SEL_USER_BANK_Pos));
-    transmit_byte_usart3(get_register_value(REG_BANK_SEL_ADD)); // exp 0x20
+    // transmit_byte_usart3(get_register_value(REG_BANK_SEL_ADD)); // exp 0x20
 
     
 	//Select def ODR freq = 1.125 kHz -> ACCEL_SMPLRT_DIV[0:1] = 0 (default)
@@ -320,18 +316,17 @@ static void configure_accel(void){
 	//Acc full scale +/-2g
 	acc_cfg |= ACCEL_FULL_SCALE_2G; //0x25
 	spi_write_async(ACCEL_CONFIG_ADD, acc_cfg);
-    transmit_byte_usart3(get_register_value(ACCEL_CONFIG_ADD)); // exp 0x19
+    // transmit_byte_usart3(get_register_value(ACCEL_CONFIG_ADD)); // exp 0x19
 }
 
 
 
 static void configure_magnetometer(void){
     /* Configure external magnetometer over I2C on GY_ICM20948V2 board (master mode) */
-    uint8_t reg_value = 0; //var to verify written data 
     
     // Set user bank 3
     spi_write_async(REG_BANK_SEL_ADD, (0x03 << REG_BANK_SEL_USER_BANK_Pos));
-    transmit_byte_usart3(get_register_value(REG_BANK_SEL_ADD)); // exp 0x30
+    // transmit_byte_usart3(get_register_value(REG_BANK_SEL_ADD)); // exp 0x30
     
     //ODR settings: when gyro is active -> external odr is the same 
     //i2c master freq: according to recommended in table 23 is 345.60 kHz(46.67%)
@@ -370,7 +365,7 @@ static void configure_magnetometer(void){
                           
     //set init address of data transfer from ST1 -> HXL_OUT -> ... ST2 (autoinc)
     spi_write_async(I2C_SLV0_REG_ADD, MAG_ST1_ADD);
-    transmit_byte_usart3(get_register_value(I2C_SLV0_REG_ADD)); // exp 0x10 (MAG_ST1_ADD)
+    // transmit_byte_usart3(get_register_value(I2C_SLV0_REG_ADD)); // exp 0x10 (MAG_ST1_ADD)
     
     //set length of read data (9 bytes): necessarry to read st2 reg when receiving measurements 
     uint8_t slave0_cntrl_data = (9U << I2C_SLV0_CTRL_I2C_SLV0_LENG_Pos);
