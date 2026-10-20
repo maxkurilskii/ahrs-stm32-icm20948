@@ -1,6 +1,6 @@
 #include "common.h"
 #include "uart_driver.h"
-#include "uart_parser.h"
+#include "uart_protocol.h"
 #include "ism20948_driver.h"
 #include "data_prepr.h"
 
@@ -10,6 +10,15 @@
 #define QUATERNION_ORIENTATION      3    
 
 #define SEND_MODE   IMU_SCALED_MEAS
+
+#define TEST_LOAD_0         0
+#define TEST_LOAD_5_MS      5
+#define TEST_LOAD_10_MS     10
+#define TEST_LOAD_20_MS     20
+#define TEST_LOAD_50_MS     50
+#define TEST_LOAD_100_MS    100
+
+
 
 // volatile uint32_t msCounter = 0;
 uint32_t start_delay_us = 0;
@@ -43,15 +52,18 @@ int main(void)
     
     USART3_Init();
 
-    IMU20948_Init();
-    Madgwick_Filter_Init();
+    // IMU20948_Init();
+    // Madgwick_Filter_Init();
 
     // delay_ms(1000);
-    uint64_t master_ref_time = 0;
+    PosixTimestamp master_ref_time = {0};
     uint32_t stm_ref_us_ticks = 0;
 
     /* Parsed payload instance from received msg */
     PayloadInstance pld; 
+
+    /* Responce frame */
+    uint8_t resp_frame[MAX_FRAME_SIZE] = {};
 
     /* Flag to launch any imu measurements -> orientation estimation */
     uint8_t imu_running = 0;
@@ -73,7 +85,8 @@ int main(void)
 
         /* Check if new cmd has arrived */
         while (!rb_is_empty(&rx_ring_buffer)){
-            // save current next_write_ind (snapshot) 
+            // save current next_write_ind (snapshot) to know exact read bound
+            // real next_write_ind can change during reading
             uint32_t nwi_snap = rx_ring_buffer.next_write_ind; 
             int n_available = rb_available(&rx_ring_buffer, nwi_snap);
             if (n_available < 0)
@@ -81,9 +94,7 @@ int main(void)
 
             for(int i = 0; i < n_available; i++){
                 uint8_t data;
-                int n_read = rb_read_partial_data(&data, &rx_ring_buffer, 1);
-                if (n_read <= 0)
-                    break;
+                rb_read_partial_data(&data, &rx_ring_buffer, 1);
                 error_code_t err_code = parse_protocol_frame(&pld, data);
                 if (!(err_code == NO_ERROR)){
                     continue;
@@ -95,30 +106,61 @@ int main(void)
 
                     // save app timestamp (need to save it as early as possible)
                     uint32_t elaped_us_ticks = (usCounter - stm_ref_us_ticks);
-                    imu_sample.time_us = (uint64_t)elaped_us_ticks * SYS_TICK_PERIOD_US + master_ref_time; 
-
-                    memcpy((uint8_t *)&master_ref_time, pld.payload, pld.payload_len); // skip first 3 bytes and last 2 (crc_h, crc_l)
-                    IMU_Timer_Start();
+                    imu_sample.time_us = (uint64_t)elaped_us_ticks * SYS_TICK_PERIOD_US + master_ref_time.timestamp; 
+                    
                     imu_running = 1;
+                    memcpy(master_ref_time.bytes, pld.payload, pld.payload_len); // skip first 3 bytes and last 2 (crc_h, crc_l)
+                    encode_protocol_frame(resp_frame, pld.payload, START_CMD, pld.payload_len);
+                    while(cur_usart3_tx_state != USART3_TX_FREE);                    
+                    transmit_protocol_msg_usart3(resp_frame, pld.payload_len + 5);
+                    // IMU_Timer_Start();
                 }
                 else if (pld.msg_code == STOP_CMD){
-                    IMU_Timer_Stop();
                     imu_running = 0;
+                    memcpy(master_ref_time.bytes, pld.payload, pld.payload_len); // skip first 3 bytes and last 2 (crc_h, crc_l)
+                    encode_protocol_frame(resp_frame, pld.payload, STOP_CMD, pld.payload_len);
+                    while(cur_usart3_tx_state != USART3_TX_FREE);
+                    transmit_protocol_msg_usart3(resp_frame, pld.payload_len + 5);
+                    // IMU_Timer_Stop();
                 }
-                else if (pld.msg_code == CALIB_CMD){
+                else if (pld.msg_code == UPD_TIME_CMD){
+                    imu_running = 0;
+                    memcpy(master_ref_time.bytes, pld.payload, pld.payload_len); // skip first 3 bytes and last 2 (crc_h, crc_l)
+                    encode_protocol_frame(resp_frame, pld.payload, UPD_TIME_CMD, pld.payload_len);
+                    while(cur_usart3_tx_state != USART3_TX_FREE);
+                    transmit_protocol_msg_usart3(resp_frame, pld.payload_len + 5);
                     // TODO:   
                     //  - init calibration: gyro + magnet + accel(?)
                     //  - transnmit back measurements during calibration
                     //  - transmit back resulted biases (?) to check validness of calculation
                     // imu_running = 1;
-                    continue;
+                }
+                else if (pld.msg_code == CALIB_CMD){
+                    imu_running = 0;
+                    memcpy(master_ref_time.bytes, pld.payload, pld.payload_len); // skip first 3 bytes and last 2 (crc_h, crc_l)
+                    encode_protocol_frame(resp_frame, pld.payload, CALIB_CMD, pld.payload_len);
+                    while(cur_usart3_tx_state != USART3_TX_FREE);
+                    transmit_protocol_msg_usart3(resp_frame, pld.payload_len + 5);
+                    // TODO:   
+                    //  - init calibration: gyro + magnet + accel(?)
+                    //  - transnmit back measurements during calibration
+                    //  - transmit back resulted biases (?) to check validness of calculation
+                    // imu_running = 1;
                 }
             }
+
         }
+
+        /* ---------------------------------------------------------------- */
+        // TEST LOAD: 
+        /* ---------------------------------------------------------------- */
+
+        delay_ms(TEST_LOAD_20_MS);
 
         /* ---------------------------------------------------------------- */
         //  IMU CONTROL PART  
         /* ---------------------------------------------------------------- */
+    /* 
 
         if (!imu_running)
             continue;
@@ -132,7 +174,6 @@ int main(void)
             start_reading_imu_measurement();
         }
 
-        /* ------------------------------------------ */
         if (cur_spi_state == SPI_DATA_READY)
         {
             imu_scaled_meas_t *meas = get_imu_corrected_measurement();
@@ -147,7 +188,6 @@ int main(void)
             cur_spi_state = SPI_FREE;
         }
 
-        /* ------------------------------------------ */
         if ((imu_sample_cnt * TIM9_PERIOD_MS >= UART_TX_PERIOD_MS) &&
             (cur_usart3_tx_state == USART3_TX_FREE) && (cur_spi_state == SPI_FREE))
         {
@@ -160,6 +200,8 @@ int main(void)
                 transmit_quater_orient_usart3(get_quater_orient_sample());
             #endif
         }
+        
+    */
 
            
     }
