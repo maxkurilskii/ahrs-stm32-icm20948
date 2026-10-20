@@ -70,8 +70,10 @@ int rb_free_space(const volatile RingBuf *rb)
 void rb_write_data(volatile RingBuf *rb, Data val)
 {
     // если буфер заполнен -> не пишем
-    if(rb_is_full(rb))
+    if(rb_is_full(rb)){
+        set_led(LED2); // visualize buffer saturation
         return;
+    }
 
     rb->arr[rb->next_write_ind] = val;
     // инкрементируем Write индекс с учетом его возможного переполнения

@@ -1,12 +1,13 @@
 #ifndef RING_BUF_H
 #define RING_BUF_H
 
+#include "common.h"
 #include <stdio.h>
 #include <stdint.h>
 
 #define W_IND      -1
 #define R_IND       0
-#define RB_SIZE    20  // 0 < RING_BUF_SIZE < 255 (uint8T)
+#define RB_SIZE    100  // 0 < RING_BUF_SIZE < 255 (uint8T)
 
 typedef uint8_t Data;
 
