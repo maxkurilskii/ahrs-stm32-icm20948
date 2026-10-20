@@ -11,7 +11,7 @@
 
 #define UART_TX_PERIOD_MS   20
 #define TX_BUF_SIZE         100
-#define RX_BUF_SIZE         20
+#define RX_BUF_SIZE         100                                                                                                                  
 
 typedef enum{
     USART3_TX_FREE,            // after transmition of data (DMA irq resets)

@@ -1,5 +1,10 @@
 #include "uart_driver.h"
 
+
+/* Global UART3 STATE */
+volatile usart3_tx_state_t cur_usart3_tx_state;
+volatile usart3_rx_state_t cur_usart3_rx_state;
+
 /*  UART3 TX BUFFER */
 uint8_t uart_tx_dma_buf[TX_BUF_SIZE] = {0};
 
@@ -9,11 +14,16 @@ volatile uint8_t uart_rx_dma_buf[RX_BUF_SIZE] = {0};
 /*  UART3 RX RING BUFFER */
 volatile RingBuf rx_ring_buffer;
 
-/* Global UART3 STATE */
-volatile usart3_tx_state_t cur_usart3_tx_state;
-volatile usart3_rx_state_t cur_usart3_rx_state;
-volatile uint8_t received_len = 0;
 
+/*
+ * RX DMA uses a separate circular buffer to receive UART data independently
+ * of the software rx ring buffer state. Since DMA continues receiving data
+ * regardless of whether the ring buffer is full, it may overwrite unread data.
+ *
+ * usart_write_to_ring_buffer() copies received bytes from the DMA buffer to
+ * the software rx ring buffer and prevents writing when the ring buffer is full,
+ * allowing software to detect and handle buffer overflow.
+ */
 
 void usart_write_to_ring_buffer()
 {
@@ -133,7 +143,7 @@ void USART3_Init(void)
     DMA1_Stream3->CR |= DMA_SxCR_MINC | DMA_SxCR_TCIE | (1U << DMA_SxCR_DIR_Pos);
     DMA1_Stream3->PAR = (uint32_t)&(USART3->TDR);
     DMA1_Stream3->M0AR = (uint32_t)uart_tx_dma_buf;
-    DMA1_Stream3->NDTR = X_BUF_SIZE;
+    DMA1_Stream3->NDTR = RX_BUF_SIZE;
     
     /* RX config:  MSize = PSize = 8 bit; Mem inc; Perif->Mem;
         CIRC mode: data wraps around automatically (end -> start)
@@ -238,6 +248,7 @@ void transmit_data_usart3(uint8_t *data_buffer, uint8_t len)
     __DSB();
     DMA1_Stream3->CR |= DMA_SxCR_EN;
 }
+
 
 void transmit_control_msg_usart3(uint8_t msg_code, uint8_t msg_data)
 {
