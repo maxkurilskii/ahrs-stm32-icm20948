@@ -3,7 +3,10 @@
 
 #include "stm32f767xx.h"
 #include <stdio.h>
+#include <stdint.h>
+#include <stdbool.h>
 #include <string.h>
+
 #include "system_clock_init.h" 
 #include "led_unit.h"
 
