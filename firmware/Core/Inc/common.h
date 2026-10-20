@@ -9,6 +9,11 @@
 
 #define SYS_TICK_PERIOD_US     90
 
+typedef union{
+    uint8_t  bytes[8];
+    uint64_t timestamp;
+} PosixTimestamp;
+
 void delay_ms(uint16_t milis);
 //extern volatile uint32_t msCounter;
 extern volatile uint32_t usCounter;
