@@ -249,6 +249,18 @@ void transmit_data_usart3(uint8_t *data_buffer, uint8_t len)
     DMA1_Stream3->CR |= DMA_SxCR_EN;
 }
 
+void transmit_protocol_msg_usart3(uint8_t *data, uint8_t data_len)
+{
+    cur_usart3_tx_state = USART3_TX_TRANSMITING;
+
+    memcpy(uart_tx_dma_buf, data, data_len);
+
+    DMA1_Stream3->CR &= ~DMA_SxCR_EN;
+    DMA1->LIFCR = DMA_LIFCR_CTCIF3;
+    DMA1_Stream3->NDTR = data_len;
+    __DSB();
+    DMA1_Stream3->CR |= DMA_SxCR_EN;
+}
 
 void transmit_control_msg_usart3(uint8_t msg_code, uint8_t msg_data)
 {

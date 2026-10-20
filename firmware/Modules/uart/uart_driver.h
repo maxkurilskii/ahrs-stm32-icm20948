@@ -40,8 +40,8 @@ void transmit_data_usart3(uint8_t* data_buffer, uint8_t len);
 void transmit_imu_sample_usart3(imu_sample_t* imu_meas);
 void transmit_euler_orient_usart3(imu_euler_orient_t* eu);
 void transmit_quater_orient_usart3(imu_quater_orient_t* q);
-
-void transmit_byte_usart3_debug(uint8_t data);
+void transmit_protocol_msg_usart3(uint8_t *data, uint8_t data_len);
+// void transmit_byte_usart3_debug(uint8_t data);
 
 uint8_t* get_usart_rx_data(void);
 uint8_t GetUsartParsedMsgCode(void);
