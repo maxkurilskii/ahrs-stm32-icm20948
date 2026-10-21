@@ -212,26 +212,29 @@ def test_burst(
     receiver = FrameReceiver(ser)
 
     expected_frames = []
-
+    random_sleeps = []
     # Send frames without waiting for individual responses.
     for i in range(count):
         cmd = COMMANDS[i % len(COMMANDS)]
         tx_frame = make_test_frame(cmd)
 
         ser.write(tx_frame)
-        ser.flush()
+        # ser.flush()
         result.sent += 1
         expected_frames.append(tx_frame)
 
         if max_interval_s > 0:
-            random_sleep_time = random.uniform(min_interval_s, max_interval_s)
-            # print("Random sleep: ", random_sleep_time)
+            random_sleep = random.uniform(min_interval_s, max_interval_s)
+            # print("Random sleep ms: ", random_sleep_time * 1000)
+            random_sleeps.append(random_sleep)
             time.sleep(
-                random_sleep_time
+                random_sleep
             )
 
-    # ser.flush()
-
+    ser.flush()
+    # Скорость отправки (скорость производителя) без учета пауз (максимальная):
+    # Кол-во отправлен байт / общее время отправки (время отправки одного байта*общ кол-во байт + общее время пауз)
+    print(f"V tx = {len(expected_frames) * 13 / ((1 / 11520) * 13 * len(expected_frames)):.3f}")
     # Collect responses and compare them in order.
     for i, expected in enumerate(expected_frames):
         # print_frame("TX", expected)
@@ -286,7 +289,7 @@ def main():
 
     parser.add_argument("--interval-ms", type=float, default=10.0)
     parser.add_argument("--min-interval-ms", type=float, default=0.1)
-    parser.add_argument("--max-interval-ms", type=float, default=5.0)
+    parser.add_argument("--max-interval-ms", type=float, default=1.0)
     parser.add_argument("--timeout", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=12345)
 
