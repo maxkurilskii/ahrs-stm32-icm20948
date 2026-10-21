@@ -38,19 +38,15 @@ BUILD_DIR = build
 C_SOURCES =  \
 Core/Src/main.c \
 Core/Src/system_stm32f7xx.c \
-Modules/app/system_clock_init.c \
-Modules/app/led_unit.c \
-Modules/app/data_prepr.c \
-Modules/imu_ism20948/ism20948_driver.c \
-Modules/imu_ism20948/spi.c \
-Modules/uart/uart_driver.c \
-Modules/uart/ring_buf.c \
-Modules/uart/uart_parser.c \
-Modules/uart/crc16.c \
-$(wildcard Middlewares/Fusion/*.c)
+Core/Src/syscalls_min.c \
+$(wildcard Middlewares/Fusion/*.c) \
+$(wildcard Modules/app/*.c) \
+$(wildcard Modules/imu_ism20948/*.c) \
+$(wildcard Modules/uart/*.c)
+
 
 # ASM sources
-ASM_SOURCES =  \
+ASM_SOURCES = \
 startup_stm32f767xx.s
 
 # ASMM sources

@@ -54,30 +54,47 @@ int rb_available(const volatile RingBuf *rb, const uint32_t next_write_index)
 
 int rb_free_space(const volatile RingBuf *rb)
 {
+    // NOTE: current ring buffer full state is SIZE - 1
     if (rb_is_empty(rb))
-        return rb->size;
+        return rb->size - 1;
 
     if (rb->next_write_ind > rb->next_read_ind)
-        return rb->size - (rb->next_write_ind - rb->next_read_ind);
+        return rb->size - 1 - (rb->next_write_ind - rb->next_read_ind);
         
     if (rb->next_write_ind < rb->next_read_ind)
-        return rb->next_read_ind - rb->next_write_ind;
+        return rb->next_read_ind - 1 - rb->next_write_ind;
     
     return 0;
 }
 
 
-void rb_write_data(volatile RingBuf *rb, Data val)
+int rb_free_space_safe(const volatile RingBuf *rb, int next_read_index)
+{
+    // NOTE: current ring buffer full state is SIZE - 1
+    if (rb_is_empty(rb))
+        return rb->size - 1;
+
+    if (rb->next_write_ind > next_read_index)
+        return rb->size - 1 - (rb->next_write_ind - next_read_index);
+        
+    if (rb->next_write_ind < next_read_index)
+        return next_read_index - 1 - rb->next_write_ind;
+    
+    return 0;
+}
+
+
+uint8_t rb_write_data(volatile RingBuf *rb, Data val)
 {
     // если буфер заполнен -> не пишем
     if(rb_is_full(rb)){
-        set_led(LED2); // visualize buffer saturation
-        return;
+        return 0;
     }
 
     rb->arr[rb->next_write_ind] = val;
     // инкрементируем Write индекс с учетом его возможного переполнения
     rb->next_write_ind = (rb->next_write_ind + 1) % rb->size;
+    return 1;
 
 }
 
