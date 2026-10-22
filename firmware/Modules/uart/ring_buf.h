@@ -28,8 +28,7 @@ Data rb_pick_element(volatile RingBuf *rb);
 uint8_t rb_is_full(const volatile RingBuf *rb);
 uint8_t rb_is_empty(const volatile RingBuf *rb);
 int rb_free_space(const volatile RingBuf *rb);
-int rb_free_space_safe(const volatile RingBuf *rb, int next_read_index);
-int rb_available(const volatile RingBuf *rb, const uint32_t next_write_index);
+int rb_available(const volatile RingBuf *rb);
 
 uint8_t rb_write_data(volatile RingBuf *rb, Data val);
 uint8_t rb_read_partial_data(Data *dest, volatile RingBuf *rb, int len);

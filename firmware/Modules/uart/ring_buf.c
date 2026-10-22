@@ -36,49 +36,42 @@ uint8_t rb_is_empty(const volatile RingBuf *rb)
 }
 
 
-int rb_available(const volatile RingBuf *rb, const uint32_t next_write_index)
+int rb_available(const volatile RingBuf *rb)
 {
-    if (rb_is_empty(rb))
+    // save current next_write_ind (especially), next_read_ind as snapshot
+    // for thread safety
+    const uint32_t next_write_index = rb->next_write_ind;
+    const uint32_t next_read_index = rb->next_read_ind;
+
+    if (next_write_index == next_read_index)
         return 0;
 
-    if (next_write_index > rb->next_read_ind)
-        return next_write_index - rb->next_read_ind;
+    if (next_write_index > next_read_index)
+        return next_write_index - next_read_index;
         
-    if (next_write_index < rb->next_read_ind)
-        return rb->size - (rb->next_read_ind - next_write_index);
+    if (next_write_index < next_read_index)
+        return rb->size - (next_read_index - next_write_index);
     
     return 0;
 }
-
 
 
 int rb_free_space(const volatile RingBuf *rb)
 {
-    // NOTE: current ring buffer full state is SIZE - 1
-    if (rb_is_empty(rb))
-        return rb->size - 1;
-
-    if (rb->next_write_ind > rb->next_read_ind)
-        return rb->size - 1 - (rb->next_write_ind - rb->next_read_ind);
-        
-    if (rb->next_write_ind < rb->next_read_ind)
-        return rb->next_read_ind - 1 - rb->next_write_ind;
+    // save current next_write_ind, next_read_ind (especially) as snapshot
+    // for thread safety
+    const uint32_t next_write_index = rb->next_write_ind;
+    const uint32_t next_read_index = rb->next_read_ind;
     
-    return 0;
-}
-
-
-int rb_free_space_safe(const volatile RingBuf *rb, int next_read_index)
-{
     // NOTE: current ring buffer full state is SIZE - 1
-    if (rb_is_empty(rb))
+    if (next_write_index == next_read_index)
         return rb->size - 1;
 
-    if (rb->next_write_ind > next_read_index)
-        return rb->size - 1 - (rb->next_write_ind - next_read_index);
+    if (next_write_index > next_read_index)
+        return rb->size - 1 - (next_write_index - next_read_index);
         
-    if (rb->next_write_ind < next_read_index)
-        return next_read_index - 1 - rb->next_write_ind;
+    if (next_write_index < next_read_index)
+        return next_read_index - 1 - next_write_index;
     
     return 0;
 }
@@ -104,13 +97,17 @@ uint8_t rb_read_all_data(Data *dest, volatile RingBuf *rb)
     if(rb_is_empty(rb))
         return 0;
 
+    // save current next_write_ind (snapshot) to know exact read bound
+    // real next_write_ind can be changed in other threads (in dma rx, idle interrupts) 
+    const uint32_t next_write_index = rb->next_write_ind;
+
     uint8_t i = 0; // счетчик прочитанных элементов
     while(1){
         dest[i] = rb->arr[rb->next_read_ind];
         i++; 
         rb->next_read_ind = (rb->next_read_ind + 1) % rb->size;   
         // Если R индекс достиг W индекса -> прочитали все что было 
-        if(rb->next_read_ind == rb->next_write_ind){
+        if(rb->next_read_ind == next_write_index){
             break;
         }
     }
@@ -123,13 +120,17 @@ uint8_t rb_read_partial_data(Data *dest, volatile RingBuf *rb, int len)
 {
     if(rb_is_empty(rb) || len <= 0)
         return 0;
+    
+    // save current next_write_ind (snapshot) to know exact read bound
+    // real next_write_ind can be changed in other threads (in dma rx, idle interrupts) 
+    const uint32_t next_write_index = rb->next_write_ind;
 
     uint8_t i = 0; // счетчик прочитанных элементов
     while(i < len){
         dest[i] = rb->arr[rb->next_read_ind];
         i++; 
         rb->next_read_ind = (rb->next_read_ind + 1) % rb->size;   
-        if(rb->next_read_ind == rb->next_write_ind){
+        if(rb->next_read_ind == next_write_index){
             break;
         }
     }
