@@ -1,6 +1,5 @@
 #include "uart_driver.h"
 
-
 /* Global UART3 STATE */
 volatile usart3_tx_state_t cur_usart3_tx_state;
 volatile usart3_rx_state_t cur_usart3_rx_state;
@@ -8,56 +7,147 @@ volatile usart3_rx_state_t cur_usart3_rx_state;
 /*  UART3 TX BUFFER */
 uint8_t uart_tx_dma_buf[TX_BUF_SIZE] = {0};
 
+/*  UART3 TX RING BUFFER */
+volatile RingBuf tx_ring_buffer;
+
 /*  UART3 RX BUFFER */
 volatile uint8_t uart_rx_dma_buf[RX_BUF_SIZE] = {0};
 
 /*  UART3 RX RING BUFFER */
 volatile RingBuf rx_ring_buffer;
 
+// Private functions declarations
+void Timer10_Init(void);
+void UartTX_Task();
+uint8_t UartWrite_2_RxRingBuffer(void);
+
+
+void TIM1_UP_TIM10_IRQHandler(void){
+    
+    if(TIM10->SR & TIM_SR_UIF){
+        TIM10->SR &= ~TIM_SR_UIF;
+        UartTX_Task();
+    }
+}
+
 
 /*
- * RX DMA uses a separate circular buffer to receive UART data independently
- * of the software rx ring buffer state. Since DMA continues receiving data
- * regardless of whether the ring buffer is full, it may overwrite unread data.
+ * Adds a complete frame to the TX ring buffer for transmission to the host.
+ * First checks whether enough free space is available for the entire frame.
+ * If there is insufficient space, the frame is rejected.
  *
- * usart_write_to_ring_buffer() copies received bytes from the DMA buffer to
- * the software rx ring buffer and prevents writing when the ring buffer is full,
- * allowing software to detect and handle buffer overflow.
+ * If enough space is available, the frame bytes are copied into the ring
+ * buffer and the enqueued frame counter is incremented.
+ * If a write fails, LED3 indicates buffer saturation and the overflow
+ * counter is updated.
+ *
+ * Returns 1 if the frame is accepted, or 0 if there is insufficient space.
  */
 
-void usart_write_to_ring_buffer()
+uint8_t UartWrite_2_TxRingBuffer(uint8_t *data, uint8_t data_len)
+{
+    if(rb_free_space_safe(&tx_ring_buffer) < data_len)
+        return 0;
+    stats.tx_frames_enqueued += 1;
+    for(uint8_t i = 0; i < data_len; i++){
+        if (!rb_write_data(&tx_ring_buffer, data[i])){
+            set_led(LED3); // visualize buffer saturation
+            stats.tx_ring_buffer_ovf_count += 1;
+        }
+    }
+    return 1;
+}
+
+
+/*
+ * Checks whether the TX ring buffer contains data and the previous
+ * DMA/USART TX transfer has completed.
+ * If the buffer is empty or transmission is still in progress, returns.
+ *
+ * Otherwise, reads all available bytes (not frames!) from the TX ring buffer into
+ * the DMA TX buffer and starts a new DMA transfer.
+ * The TX state prevents starting a new transfer while the previous
+ * one is in progress. It is updated by the DMA1 Stream3 interrupt
+ * handler when the Transfer Complete (TC) flag is set.
+ */
+void UartTX_Task(){
+    if (rb_is_empty(&tx_ring_buffer) || cur_usart3_tx_state == USART3_TX_TRANSMITING)
+        return;
+    stats.tx_dma_start_count++;
+
+    cur_usart3_tx_state = USART3_TX_TRANSMITING;
+    DMA1_Stream3->CR &= ~DMA_SxCR_EN;
+    DMA1->LIFCR = DMA_LIFCR_CTCIF3;
+    uint8_t n_read = rb_read_all_data(uart_tx_dma_buf, &tx_ring_buffer);
+    DMA1_Stream3->NDTR = n_read;
+    __DSB();
+    DMA1_Stream3->CR |= DMA_SxCR_EN;
+}
+
+
+/*
+ * UART RX DMA continuously receives data into a circular DMA buffer.
+ * This function is called from DMA Half Transfer (HT), Transfer
+ * Complete (TC), USART3 (IDLE) interrupt handlers to copy newly received bytes
+ * into the software RX ring buffer.
+ *
+ * If the ring buffer becomes full, copying stops and the remaining
+ * bytes are dropped.
+ *
+ * The function assumes that each DMA buffer segment is processed
+ * before DMA overwrites its data.
+ */
+
+uint8_t UartWrite_2_RxRingBuffer(void)
 {
     static uint32_t last_write_ind = 0;
-    uint32_t new_write_ind = RX_BUF_SIZE - DMA1_Stream1->NDTR; // should be always >= 0
-    if  (new_write_ind == last_write_ind)
-        return;
-
+    uint32_t new_write_ind = (RX_BUF_SIZE - DMA1_Stream1->NDTR) % RX_BUF_SIZE; // 0 .. RX_BUF_SIZE - 1
+    if  (new_write_ind == last_write_ind) // dma rx buffer has not changed
+        return 1;  
+    
     if (new_write_ind > last_write_ind)
     {
         for (uint32_t i = last_write_ind; i < new_write_ind; ++i)
         {
-            rb_write_data(&rx_ring_buffer, uart_rx_dma_buf[i]);
+            if (!rb_write_data(&rx_ring_buffer, uart_rx_dma_buf[i])){
+                set_led(LED2); // visualize buffer saturation
+                last_write_ind = new_write_ind;
+                stats.rx_ring_buffer_ovf_count += 1;    
+                stats.rx_bytes_dropped += new_write_ind - i;
+                return 0;  
+            }
         }
     }
     /* Received data wraped around usart_rx_dma_buffer -> need to copy 2 parts */
-    else if (new_write_ind < last_write_ind)
-    {
+    else {
         // copy the farthest to the end of usart_rx_dma_buffer
         for (uint32_t i = last_write_ind; i < RX_BUF_SIZE; i++)
         {
-            rb_write_data(&rx_ring_buffer, uart_rx_dma_buf[i]);
+            if (!rb_write_data(&rx_ring_buffer, uart_rx_dma_buf[i])){
+                set_led(LED2); // visualize buffer saturation
+                last_write_ind = new_write_ind;
+                stats.rx_ring_buffer_ovf_count += 1;    
+                stats.rx_bytes_dropped += RX_BUF_SIZE - i + new_write_ind;
+                return 0;
+            }
         }
         // copy the closest to the start of usart_rx_dma_buffer
         for (uint32_t i = 0; i < new_write_ind; i++)
         {
-            rb_write_data(&rx_ring_buffer, uart_rx_dma_buf[i]);
+            if (!rb_write_data(&rx_ring_buffer, uart_rx_dma_buf[i])){
+                set_led(LED2);
+                last_write_ind = new_write_ind;
+                stats.rx_ring_buffer_ovf_count += 1;    
+                stats.rx_bytes_dropped += new_write_ind - i;
+                return 0;     
+            }
         }
     }
 
     last_write_ind = new_write_ind;
+    return 1;  
 }
 
-volatile uint32_t ndtr;
 
 /* DMA RX Stream 1 */
 void DMA1_Stream1_IRQHandler(void)
@@ -67,17 +157,16 @@ void DMA1_Stream1_IRQHandler(void)
     {
         DMA1->LIFCR = DMA_LIFCR_CHTIF1;
         // Copying ...
-        usart_write_to_ring_buffer();
-
-        cur_usart3_rx_state = USART3_RX_DATA_RECEIVED;
+        UartWrite_2_RxRingBuffer();
+        // cur_usart3_rx_state = USART3_RX_DATA_RECEIVED;
     }
     // Transfer Complete
     if (DMA1->LISR & DMA_LISR_TCIF1)
     {
         DMA1->LIFCR = DMA_LIFCR_CTCIF1;
         // Copying ...
-        usart_write_to_ring_buffer();
-        cur_usart3_rx_state = USART3_RX_DATA_RECEIVED;
+        UartWrite_2_RxRingBuffer();
+        // cur_usart3_rx_state = USART3_RX_DATA_RECEIVED;
     }
 }
 
@@ -91,28 +180,19 @@ void DMA1_Stream3_IRQHandler(void)
             ;
         DMA1->LIFCR = DMA_LIFCR_CTCIF3;
         cur_usart3_tx_state = USART3_TX_FREE;
+
+        stats.tx_dma_finish_count++;
     }
 }
 
 void USART3_IRQHandler(void)
 {
-    if (USART3->ISR & USART_ISR_IDLE)
-    {
-
+    if (USART3->ISR & USART_ISR_IDLE){
         // Clear idle line flag
         USART3->ICR = USART_ICR_IDLECF;
-
-        // Update USART RX FSM flag
-        cur_usart3_rx_state = USART3_RX_DATA_RECEIVED;
-
-        // DMA1_Stream1->CR &= ~DMA_SxCR_EN;
-        // while(DMA1_Stream1->CR & DMA_SxCR_EN);
-        // DMA1->LIFCR = DMA_LIFCR_CTCIF1;
-
         // Copying ...
-        usart_write_to_ring_buffer();
-
-        cur_usart3_rx_state = USART3_RX_DATA_RECEIVED;
+        UartWrite_2_RxRingBuffer();
+        // cur_usart3_rx_state = USART3_RX_DATA_RECEIVED;
     }
 }
 
@@ -120,6 +200,9 @@ uint8_t *get_usart_rx_data(void)
 {
     return (uint8_t *)uart_tx_dma_buf;
 }
+
+
+
 
 void USART3_Init(void)
 {
@@ -204,10 +287,45 @@ void USART3_Init(void)
     cur_usart3_tx_state = USART3_TX_FREE;
     cur_usart3_rx_state = USART3_RX_FREE;
 
-    /* Inittialize ring buffer for RX */
+    /* Timer 10 for TX Tasks init */
+    Timer10_Init();
+
+    /* Inittialize ring buffers for RX and TX */
     rb_init(&rx_ring_buffer);
-    
+    rb_init(&tx_ring_buffer);
 }
+
+
+void Timer10_Init(void){
+    // Enable TIM10 clock from APB2 (108 Mhz)
+    RCC->APB2ENR |= RCC_APB2ENR_TIM10EN;
+    // Prescaler: 108 Mhz / 108 = 1 MHz 
+    TIM10->PSC = 107;
+    //AUto-reload: (UART_TX_PERIOD_MS / 1000) * Ftim_tick = ARR
+    TIM10->ARR = UART_TX_PERIOD_MS * 1000;
+    
+    // Update Prescaler and ARR registers before start
+    TIM10->EGR |= TIM_EGR_UG;
+    TIM10->SR &= ~TIM_SR_UIF; //cleat flag!
+    
+    // Enable interrupts
+    TIM10->DIER |= TIM_DIER_UIE;
+    NVIC_EnableIRQ(TIM1_UP_TIM10_IRQn);
+    
+    // DO NOT Start timer in INIT!
+    // TIM10->CR1 |= TIM_CR1_CEN; 
+}
+
+void USART3_Timer_Start(void){
+    TIM10->CR1 |= TIM_CR1_CEN;
+}
+
+void USART3_Timer_Stop(void){
+    TIM10->CR1 &= ~TIM_CR1_CEN;
+    TIM10->SR &= ~TIM_SR_UIF; 
+    TIM10->CNT = 0;
+}
+
 
 void transmit_byte_usart3(uint8_t data)
 {
