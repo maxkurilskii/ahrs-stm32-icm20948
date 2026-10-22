@@ -46,7 +46,7 @@ void TIM1_UP_TIM10_IRQHandler(void){
 
 uint8_t UartWrite_2_TxRingBuffer(uint8_t *data, uint8_t data_len)
 {
-    if(rb_free_space_safe(&tx_ring_buffer) < data_len)
+    if(rb_free_space(&tx_ring_buffer) < data_len)
         return 0;
     stats.tx_frames_enqueued += 1;
     for(uint8_t i = 0; i < data_len; i++){

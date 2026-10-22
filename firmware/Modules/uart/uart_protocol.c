@@ -19,6 +19,7 @@ error_code_t parse_protocol_frame(PayloadInstance *pld, uint8_t data)
                 parse_state = WAIT_MSG_CODE;
                 frame[i++] = data;
             } else{
+                stats.parse_hard_errors += 1;
                 reset_routine(&parse_state, &i);
                 // transmit_control_msg_usart3(ERROR_ST, INC_START_BYTE);
                 return INC_START_BYTE;
@@ -32,6 +33,7 @@ error_code_t parse_protocol_frame(PayloadInstance *pld, uint8_t data)
             } else{
                 reset_routine(&parse_state, &i);
                 // transmit_control_msg_usart3(ERROR_ST, INC_MSG_CODE);
+                stats.parse_hard_errors += 1;
                 return INC_MSG_CODE;
             }
             break;
@@ -43,6 +45,7 @@ error_code_t parse_protocol_frame(PayloadInstance *pld, uint8_t data)
             } else {
                 reset_routine(&parse_state, &i);
                 // transmit_control_msg_usart3(ERROR_ST, INC_FRAME_LEN);
+                stats.parse_hard_errors += 1;
                 return INC_FRAME_LEN;
             }
             break;
@@ -64,6 +67,7 @@ error_code_t parse_protocol_frame(PayloadInstance *pld, uint8_t data)
             if(crc16 != 0x00){
                 reset_routine(&parse_state, &i);
                 // transmit_control_msg_usart3(ERROR_ST, INC_CRC);
+                stats.parse_hard_errors += 1;
                 return INC_CRC;
             }
             else{
@@ -75,6 +79,7 @@ error_code_t parse_protocol_frame(PayloadInstance *pld, uint8_t data)
         default:{
             reset_routine(&parse_state, &i);
             // transmit_control_msg_usart3(ERROR_ST, INC_FRAME_CASE);
+            stats.parse_hard_errors += 1;
             return INC_FRAME_CASE;
         }
     }
