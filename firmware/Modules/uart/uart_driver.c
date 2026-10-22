@@ -52,7 +52,7 @@ uint8_t UartWrite_2_TxRingBuffer(uint8_t *data, uint8_t data_len)
     for(uint8_t i = 0; i < data_len; i++){
         if (!rb_write_data(&tx_ring_buffer, data[i])){
             set_led(LED3); // visualize buffer saturation
-            stats.tx_ring_buffer_ovf_count += 1;
+            stats.tx_rb_full_state_count += 1;
         }
     }
     return 1;
@@ -112,7 +112,7 @@ uint8_t UartWrite_2_RxRingBuffer(void)
             if (!rb_write_data(&rx_ring_buffer, uart_rx_dma_buf[i])){
                 set_led(LED2); // visualize buffer saturation
                 last_write_ind = new_write_ind;
-                stats.rx_ring_buffer_ovf_count += 1;    
+                stats.rx_rb_full_state_count += 1;    
                 stats.rx_bytes_dropped += new_write_ind - i;
                 return 0;  
             }
@@ -126,7 +126,7 @@ uint8_t UartWrite_2_RxRingBuffer(void)
             if (!rb_write_data(&rx_ring_buffer, uart_rx_dma_buf[i])){
                 set_led(LED2); // visualize buffer saturation
                 last_write_ind = new_write_ind;
-                stats.rx_ring_buffer_ovf_count += 1;    
+                stats.rx_rb_full_state_count += 1;    
                 stats.rx_bytes_dropped += RX_BUF_SIZE - i + new_write_ind;
                 return 0;
             }
@@ -137,7 +137,7 @@ uint8_t UartWrite_2_RxRingBuffer(void)
             if (!rb_write_data(&rx_ring_buffer, uart_rx_dma_buf[i])){
                 set_led(LED2);
                 last_write_ind = new_write_ind;
-                stats.rx_ring_buffer_ovf_count += 1;    
+                stats.rx_rb_full_state_count += 1;    
                 stats.rx_bytes_dropped += new_write_ind - i;
                 return 0;     
             }
