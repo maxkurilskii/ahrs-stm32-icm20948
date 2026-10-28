@@ -1,3 +1,15 @@
+#!/usr/bin/env python3
+
+"""
+UART communication and protocol handling for STM32 IMU data exchange.
+
+Provides:
+- binary UART frame encoding and byte-by-byte parsing;
+- serial port communication;
+- protocol message and error definitions;
+- IMU measurement reception and transmission.
+"""
+
 import argparse
 import serial
 import time
@@ -10,14 +22,18 @@ from . crc16 import calculate_crc16
 from . imu_csv_logger import ImuLogger
 
 class MessageCode(Enum):
-    IMU_MEAS      = 0x42  #any imu measurement
-    START_CMD     = 0x10 #control cmd
-    STOP_CMD      = 0x11  #control cmd
-    CALIBRATE_CMD = 0x12  #control cmd   
-    ERROR_STATUS  = 0x13 #works the same as acknowledge and notify about an error  
+    """Message identifiers used by the STM32 UART protocol."""
+
+    IMU_MEAS        = 0x42      # IMU measurement message
+    START_CMD       = 0x10      # Start command
+    STOP_CMD        = 0x11      # Stop command
+    CALIBRATE_CMD   = 0x12      # Calibration command
+    ERROR_STATUS    = 0x13      # Error status message
 
 
 class ErrorCode(Enum):
+    """Error codes used to report UART protocol errors."""
+
     NO_ERROR       = 0x00
     INC_START_BYTE = 0x01
     INC_MSG_CODE   = 0x02
@@ -26,6 +42,8 @@ class ErrorCode(Enum):
     INC_FRAME_LEN  = 0x05
     
 class ParseStates(Enum):
+    """States of the UART frame parser state machine."""
+
     WAIT_START    = 0
     WAIT_MSG_CODE = 1
     WAIT_LEN      = 2
@@ -35,13 +53,25 @@ class ParseStates(Enum):
 
 
 class ProtocolEncoder:
-    def __init__(self) -> None:
-        pass
+    """Builds binary UART frames according to the STM32 protocol."""
          
     @staticmethod
     def build_message(msg_code: int, data: bytes) -> bytes:
+        """
+        Build a UART frame containing the message code and payload.
+
+        The resulting frame has the following format:
+            [START][MSG_CODE][DATA_LEN][DATA][CRC_H][CRC_L]
+
+        Args:
+            msg_code: Protocol message identifier.
+            data: Message payload.
+
+        Returns:
+            Encoded UART frame as bytes.
+        """
         tx_frame = bytearray()
-        tx_frame.extend([UartCommunicator.START_BYTE, 
+        tx_frame.extend([UartCommunicator.PROTOTOL_START_BYTE, 
                         msg_code, 
                         len(data),
                         *data])
@@ -54,6 +84,13 @@ class ProtocolEncoder:
         
     
 class ProtocolSerialParser:    
+    """
+    Incremental parser for the binary UART protocol.
+
+    Processes the input stream byte by byte using a finite-state
+    machine and returns a complete frame after successful CRC validation.
+    """
+
     def __init__(self) -> None:
         #protocol bytes: [start, cmd, data_len_byte, data, crc_h, crc_l] 
         self._msg = bytearray() #var for collecting bytes of one frame msg 
@@ -61,14 +98,25 @@ class ProtocolSerialParser:
         self._crc16_len_cntr = 2
         self._current_msg_state = ParseStates.WAIT_START
 
-    def reset_all(self):
+    def reset_all(self) -> None:
+        """Reset the parser state and discard the current incomplete frame."""
         self._msg = bytearray() 
         self._data_len_cntr = 0
         self._current_msg_state = ParseStates.WAIT_START
             
     def process_byte(self, raw_byte: int) -> Optional[bytes]:
+        """
+        Process one byte received from the UART stream.
+
+        Args:
+            raw_byte: Received byte represented as an integer in the range 0..255.
+
+        Returns:
+            A complete validated frame if one has been received;
+            otherwise, None.
+        """
         if  self._current_msg_state == ParseStates.WAIT_START:
-            if raw_byte == UartCommunicator.START_BYTE:
+            if raw_byte == UartCommunicator.PROTOTOL_START_BYTE:
                 self._msg.append(raw_byte)
                 self._current_msg_state = ParseStates.WAIT_MSG_CODE
                 return None
@@ -117,29 +165,69 @@ class ProtocolSerialParser:
             return msg
 
 class UartReadTimeout(serial.SerialException):
+    """Raised when the maximum UART read timeout is exceeded."""
     pass
           
 class UartCommunicator:
-    START_BYTE  = 35 #b'\x23' or b'#'
-    MAX_TRY_TIME_SEC = 4 
+    """
+    Provides serial communication with the STM32 device.
+
+    Handles UART port configuration, frame transmission, reception,
+    buffering of incomplete data, and protocol parsing.
+    """
+
+    PROTOTOL_START_BYTE  = 0x23 #b'\x23' or b'#'(35)
     
-    def __init__(self, port = 'COM4', baudrate =  115200, timeout = 1.0) -> None:
+    def __init__(self, port = 'COM4', 
+                baudrate =  115200, 
+                timeout = 1.0,
+                max_try_timeout = 4) -> None:
+        """
+        Initialize the UART connection and protocol handlers.
+
+        Args:
+            port: Serial port name.
+            baudrate: UART communication speed in baud.
+            timeout: Serial read timeout in seconds.
+        """
         self.serial_handler = serial.Serial(port = port, 
                                         baudrate = baudrate, 
                                         timeout = timeout, 
                                         write_timeout = 0.1) # 0.1 or None? 
         
         self._read_timeout = timeout
+        self._max_try_timeout = max_try_timeout
         self.msg_parser = ProtocolSerialParser()
         self.msg_encoder = ProtocolEncoder()
         self._read_remaining = bytearray()
 
     def uart_write_package(self, msg_code: int, data: bytes):
-        tx_msg = self.msg_encoder.build_message(msg_code, data)
-        print('Cmd tx message: ', tx_msg.hex(' '))
+        """
+        Encode and transmit a protocol message over UART.
+
+        Args:
+            msg_code: Protocol message identifier.
+            data: Message payload.
+        """
+        tx_msg: bytes = self.msg_encoder.build_message(msg_code, data)
+        # print('Cmd tx message: ', tx_msg.hex(' '))
         self.serial_handler.write(tx_msg)
 
     def uart_read_package(self) -> bytes:
+        """
+        Read and parse the next complete UART frame.
+
+        The method preserves bytes belonging to subsequent frames and
+        processes them during the next call.
+
+        Returns:
+            A complete validated UART frame.
+
+        Raises:
+            UartReadTimeout: If no complete frame is received within the
+                maximum allowed read time.
+            serial.SerialException: If the serial port is closed.
+        """
         # parse msg from remaining bytes of last call 
         if self._read_remaining:
             for ind, old_byte in enumerate(self._read_remaining):
@@ -154,27 +242,37 @@ class UartCommunicator:
         # parse new bytes from RX buffer
         try_counter = 0
         while(self.serial_handler.is_open):
+            # wait for one byte in serial port
             one_byte = self.serial_handler.read(1)
             if not one_byte:
                 try_counter += 1
-                if try_counter * self._read_timeout >= self.MAX_TRY_TIME_SEC:
+                if try_counter * self._read_timeout >= self._max_try_timeout:
                     raise UartReadTimeout('Max read timeout was reached')
                 continue
-            try_counter = 0
+            try_counter = 0 # reset if connection established
             frame_msg = self.msg_parser.process_byte(one_byte[0])
             if frame_msg is not None: 
                 return frame_msg
             
+            # read all available  bytes in serial buffer  
             data: bytes = self.serial_handler.read(self.serial_handler.in_waiting)
             for ind, new_byte in enumerate(data):
                 frame_msg = self.msg_parser.process_byte(new_byte)
                 if frame_msg is not None:
+                    # in case serial buffer (data) still contains bytes that MUST be processes further ->
+                    # -> save to next call in self._read_remaining
                     if ind != len(data) - 1: self._read_remaining = data[ind + 1:]
                     return frame_msg 
         raise serial.SerialException('Port is closed!')
 
 
 def main():
+    """
+    Run a standalone UART IMU data collection example.
+
+    Receives scaled IMU measurements from the STM32 and stores them
+    in a CSV file.
+    """
     header = ["Time_us",
                             "A_X", "A_Y", "A_Z", 
                             "G_X", "G_Y", "G_Z", 
@@ -194,7 +292,7 @@ def main():
                 g_x, g_y, g_z,  \
                 m_x, m_y, m_z,  \
                 timestamp, _ = struct.unpack_from('<9f1Q1H', msg, offset=3)
-                scaled_meas_logger.save_scaled_data(ReadImuScaledMeasResponce((a_x, a_y, a_z),
+                scaled_meas_logger.save_scaled_data(ReadImuScaledMeasResponse((a_x, a_y, a_z),
                                                                                 (g_x, g_y, g_z), 
                                                                                 (m_x, m_y, m_z),
                                                                                 timestamp))
@@ -212,6 +310,5 @@ def main():
                 
   
 if __name__ == "__main__":
-    # Script is supposed to read imu scaled meas to test logic of UartCommunicator 
     main()   
     

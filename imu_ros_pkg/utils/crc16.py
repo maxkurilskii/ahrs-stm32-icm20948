@@ -1,3 +1,12 @@
+"""
+CRC-16/CCITT-FALSE calculation utilities.
+
+Provides a table-based implementation of CRC-16/CCITT-FALSE
+(also known as CRC-16/IBM-3740) used for integrity checking
+of UART protocol frames.
+"""
+
+
 POLY_CRC16 = 0x1021 # CRC-16/IBM-3740; CRC-16/CCITT-FALSE
 
 TABLE_CRC16: list =\
@@ -19,32 +28,47 @@ TABLE_CRC16: list =\
     0xef1f,0xff3e,0xcf5d,0xdf7c,0xaf9b,0xbfba,0x8fd9,0x9ff8,0x6e17,0x7e36,0x4e55,0x5e74,0x2e93,0x3eb2,0x0ed1,0x1ef0]
 
 def calculate_crc16(data_buf: bytearray, data_len = None) -> int:
+    """
+    Calculate CRC-16/CCITT-FALSE for the specified data.
+
+    Args:
+        data_buf: Input byte buffer to calculate the CRC for.
+        data_len: Optional number of bytes to process. If None,
+            the entire buffer is used.
+
+    Returns:
+        16-bit CRC value.
+    """
     data = data_buf if data_len is None else data_buf[:data_len]
-    crc = 0xFFFF #count only first 2 bytes
+    crc = 0xFFFF # Initial CRC value for CRC-16/CCITT-FALSE
     for byte in data:
         index = ((crc >> 8) ^ byte) & 0xFF 
         crc = ((crc << 8) ^ TABLE_CRC16[index]) & 0xFFFF
     return crc
+
+
+
+
 
 # test start msg: 
 # 23 10 08 60 da 50 2f 62 5b 06 00 29 84
 # test stop msg:
 # 23 11 08 60 da 50 2f 62 5b 06 00 46 c1
 
-if __name__ == "__main__":
-    test_data = bytearray([49, 50, 51, 52, 53, 54, 55, 56, 57]) #123456789 in ascii
-    # test_data = bytearray([0x23, 0x11, 0x08, 0x60, 0xda, 0x50, 0x2f, 0x62, 0x5b, 0x06, 0x00])
-    crc = calculate_crc16(test_data, 9)
-    print(f"CRC16 for 123456789: {crc} = 0x{crc:4x} = 0b{crc:016b}") #should be 0x29b1
-    # PROOF - apped crc bytes to data (in MSByte format!) 
-    # crc is a remainder after divition data by POLY -> (data + remain) div by poly again = 0
-    crc_h = (crc >> 8) & 0xFF # ((crc >> 8) & 0xFF).to_bytes(1, 'big')
-    crc_l = crc & 0xFF  #(crc & 0xFF).to_bytes(1, 'big')
-    print(f"{crc_h} = 0x{crc_h:x} = 0b{crc_h:8b}")
-    print(f"{crc_l} = 0x{crc_l:x} = 0b{crc_l:8b}")
-    total_msg = test_data.extend([crc_h, crc_l]) 
-    crc = calculate_crc16(test_data, 11)
-    print(crc) #should be 0
+# if __name__ == "__main__":
+#     test_data = bytearray([49, 50, 51, 52, 53, 54, 55, 56, 57]) #123456789 in ascii
+#     # test_data = bytearray([0x23, 0x11, 0x08, 0x60, 0xda, 0x50, 0x2f, 0x62, 0x5b, 0x06, 0x00])
+#     crc = calculate_crc16(test_data, 9)
+#     print(f"CRC16 for 123456789: {crc} = 0x{crc:4x} = 0b{crc:016b}") #should be 0x29b1
+#     # PROOF - apped crc bytes to data (in MSByte format!) 
+#     # crc is a remainder after divition data by POLY -> (data + remain) div by poly again = 0
+#     crc_h = (crc >> 8) & 0xFF # ((crc >> 8) & 0xFF).to_bytes(1, 'big')
+#     crc_l = crc & 0xFF  #(crc & 0xFF).to_bytes(1, 'big')
+#     print(f"{crc_h} = 0x{crc_h:x} = 0b{crc_h:8b}")
+#     print(f"{crc_l} = 0x{crc_l:x} = 0b{crc_l:8b}")
+#     total_msg = test_data.extend([crc_h, crc_l]) 
+#     crc = calculate_crc16(test_data, 11)
+#     print(crc) #should be 0
     
     # my_iter = [b'\x01', b'\x02']
     # my_byte_arr = bytearray()

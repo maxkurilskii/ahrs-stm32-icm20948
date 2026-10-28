@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+"""
+ROS node for receiving orientation data from an STM32-based IMU.
+
+Communicates with the STM32 over UART using the custom protocol
+implemented in utils.uart_com. Optionally sends a START_CMD to
+initialize the measurement stream, then receives orientation
+quaternions and publishes them as sensor_msgs/Imu messages.
+
+The received MCU timestamps are converted to ROS timestamps.
+"""
 
 import sys
 import argparse
@@ -17,6 +27,17 @@ from utils import UartCommunicator, MessageCode, UartReadTimeout
 
 
 def convert_to_imu_msg(q: Quaternion, timestamp_us: int) -> Imu:
+    """
+    Convert an orientation quaternion and timestamp to a ROS IMU message.
+
+    Args:
+        q: Orientation quaternion received from the STM32.
+        timestamp_us: Measurement timestamp in microseconds.
+
+    Returns:
+        ROS IMU message with orientation, timestamp, frame ID,
+        and configured covariance matrices.
+    """
     imu_msg = Imu()
     imu_msg.header.frame_id = "base_link"
     secs = timestamp_us // 10**6
@@ -25,20 +46,42 @@ def convert_to_imu_msg(q: Quaternion, timestamp_us: int) -> Imu:
 
     imu_msg.orientation = q
     imu_msg.orientation_covariance = [0, 0, 0, 0, 0, 0, 0, 0, 0]
+    # TODO: If orientation uncertainty is unknown, set
+    # orientation_covariance[0] = -1 instead of using a zero matrix.
+    # Orientation is available, but its covariance has not been estimated yet.
+    # A zero covariance matrix indicates unknown uncertainty in ROS.
 
     imu_msg.linear_acceleration = Vector3(0, 0, 0)
-    imu_msg.linear_acceleration_covariance = [0.000003, 0, 0, 
-                                   0, 0.000002, 0,
-                                   0, 0, 0.000004]
+    imu_msg.linear_acceleration_covariance = [-1] + [0] * 8
+    # imu_msg.linear_acceleration_covariance = [0.000003, 0, 0, 
+    #                                0, 0.000002, 0,
+    #                                0, 0, 0.000004]
     imu_msg.angular_velocity = Vector3(0, 0, 0)
-    imu_msg.angular_velocity_covariance = [0.007881, 0, 0,
-                                           0, 0.007751, 0,
-                                           0, 0, 0.006328]
+    imu_msg.angular_velocity_covariance = [-1] + [0] * 8
+    # imu_msg.angular_velocity_covariance = [0.007881, 0, 0,
+    #                                        0, 0.007751, 0,
+    #                                        0, 0, 0.006328]
+    
+    # # TODO: Linear acceleration and angular velocity are not transmitted by the MCU yet.
+    # Set covariance[0] = -1 to indicate that these measurements are unavailable.
 
     return imu_msg
 
 
 def main(args):
+    """
+    Initialize UART communication and publish received IMU orientations.
+
+    Args:
+        args: Dictionary of command-line options. The 'first_msg'
+            flag controls whether a START_CMD is sent before reception.
+
+    The function optionally requests the STM32 to start streaming
+    measurements, then continuously reads UART frames, extracts the
+    quaternion and measurement timestamp, and publishes sensor_msgs/Imu
+    messages until ROS shuts down or a communication error occurs.
+    """
+
     try:
         imu_publisher = rospy.Publisher("/IMU_ICM20948", Imu, queue_size=1)
         host_com = UartCommunicator(port = '/dev/ttyACM0', timeout = 0.5)
@@ -52,7 +95,7 @@ def main(args):
                     # Expected ACK: # [start_byte + ERROR_STATUS + data_len + error_code + CRC]
                     rospy.loginfo(f"Received_msg (hex bytes): {rx_msg.hex(' ')}" ) 
                     if (len(rx_msg) != 6 
-                        or rx_msg[0] != UartCommunicator.START_BYTE 
+                        or rx_msg[0] != UartCommunicator.PROTOTOL_START_BYTE 
                         or rx_msg[1] != MessageCode.ERROR_STATUS.value 
                         or rx_msg[2] != 1 ):
                             rospy.logwarn("Invalid ACK message, retrying START_CMD")

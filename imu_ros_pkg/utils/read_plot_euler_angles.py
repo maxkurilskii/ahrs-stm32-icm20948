@@ -9,7 +9,7 @@ from typing import Optional
 
 from . uart_com import UartCommunicator, MessageCode, UartReadTimeout
 from . imu_csv_logger import ImuLogger
-from . base_dataclasses import ReadImuEulerResponce
+from . base_dataclasses import ReadImuEulerResponse
 
 
 plt.rcParams["font.size"] = 12
@@ -71,7 +71,7 @@ def main(args):
                         # Expected ACK: # [start_byte + ERROR_STATUS + data_len + error_code + CRC]
                         print("Received_msg (integer): ", list(rx_msg)) 
                         if (len(rx_msg) != 6 
-                            or rx_msg[0] != UartCommunicator.START_BYTE 
+                            or rx_msg[0] != UartCommunicator.PROTOTOL_START_BYTE 
                             or rx_msg[1] != MessageCode.ERROR_STATUS.value 
                             or rx_msg[2] != 1 ):
                                 print("Invalid ACK message, retrying START_CMD")
@@ -89,7 +89,7 @@ def main(args):
                 try:
                     msg = host_com.uart_read_package() #blocking !!!
                     roll, pitch, yaw, timestamp, _ = struct.unpack_from('<3f1Q1H', msg, offset = 3)
-                    logger.save_angle_data(ReadImuEulerResponce(roll, pitch, yaw, timestamp))
+                    logger.save_angle_data(ReadImuEulerResponse(roll, pitch, yaw, timestamp))
                     is_received_any_msg = True
                 except UartReadTimeout:
                     raise
@@ -122,12 +122,20 @@ def main(args):
 if __name__ == "__main__":
     # Choose file 
     parser = argparse.ArgumentParser(prog = 'Build plots of euler angle measurements')
-    parser.add_argument('-f','--filename', default='imu_log_2026-09-09_18-10-56.csv', 
+    parser.add_argument('-f','--filename', 
+                        default='imu_log_2026-09-09_18-10-56.csv', 
                         help='Choose file to be processed in log_data folder!')
-    subparser = parser.add_subparsers(dest='cmd', title='subcommand', help='Collect new measurements from serial (ignore measurements from chosen file)')
+    subparser = parser.add_subparsers(dest='cmd', 
+                                      title='subcommand', 
+                                      help='Collect new measurements from serial (ignore measurements from chosen file)')
+    
     make_meas = subparser.add_parser(name='meas')
-    make_meas.add_argument('-fm', '--first-msg', action='store_true', default=False,
-                        help='Argument to initiate handshake (start cmd + timestamp are sent)')
+    
+    make_meas.add_argument('-fm', '--first-msg', 
+                        action='store_true', 
+                        default=False,
+                        help='Argument to initiate handshake (start cmd + timestamp send to STM32)')
+    
     # make_meas.add_argument('-ns', '--no-save', dest='save', action='store_false', default=True, 
     #                     help='Whether to save received measurements (default: True)')
     
