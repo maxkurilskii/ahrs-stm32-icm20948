@@ -6,9 +6,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 pprint(sys.path)
 
-from utils.base_dataclasses import QuaternionMsgResponce
+from utils.base_dataclasses import QuaternionMsgResponse
 
-a = QuaternionMsgResponce(1,1,1,1,1)
+a = QuaternionMsgResponse(1,1,1,1,1)
 
 print(a)
 

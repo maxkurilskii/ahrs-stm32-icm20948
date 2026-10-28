@@ -10,10 +10,6 @@ from typing import Optional
 import serial
 
 
-# =========================
-# Protocol configuration
-# =========================
-
 SOF = 0x23  # '#'
 
 CMD_START = 0x10
