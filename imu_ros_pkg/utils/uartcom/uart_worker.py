@@ -15,10 +15,10 @@ import serial
 import time
 import struct
 from enum import Enum
-from typing import Optional, Union, Tuple, List
 
+from utils.uartcom.protocol_codes import PROTOTOL_START_BYTE, MessageCode
 from utils.uartcom.base_dataclasses import ReadImuScaledMeasResponse
-from utils.uartcom.msg_parser import ProtocolSerialParser
+from utils.uartcom.msg_parser import ProtocolSerialParser, ParserQueueEmptyError, ParserCrc16Error
 from utils.uartcom.msg_encoder import ProtocolEncoder
 from utils.measlog.imu_csv_logger import ImuLogger
 
@@ -35,11 +35,22 @@ class UartCommunicator:
     Handles UART port configuration, frame transmission, reception,
     buffering of incomplete data, and protocol parsing.
     """
+
+    PROTOTOL_START_BYTE  = 0x23 #b'\x23' or b'#'(35)
     
-    def __init__(self, port = 'COM4', 
-                baudrate =  115200, 
-                timeout = 1.0,
-                max_try_timeout = 4) -> None:
+    def __init__(self, 
+                port = 'COM4', 
+                baudrate =  115200,   
+                # read timeout in secs
+                timeout = 1.0,       
+                # timeout in secs to wait for responce before closing connection (depends on read timeout)
+                max_try_timeout = 4,  
+                # number of bytes for greates possible frame (data/payload byte -> 0 .. 255)
+                max_frame_size = 255 + 5, 
+                # number of bytes for smallest possible frame (minimum one byte for DATA field)
+                min_frame_size = 6,  
+                # number of messages to hold in queue (with overwriting oldest!)
+                msg_queue_size = 5) -> None:
         """
         Initialize the UART connection and protocol handlers.
 
@@ -55,7 +66,7 @@ class UartCommunicator:
         
         self._read_timeout = timeout
         self._max_try_timeout = max_try_timeout
-        self.msg_parser = ProtocolSerialParser()
+        self.msg_parser = ProtocolSerialParser(max_frame_size, min_frame_size, msg_queue_size)
         self.msg_encoder = ProtocolEncoder()
         self._read_remaining = bytearray()
 
@@ -86,41 +97,32 @@ class UartCommunicator:
                 maximum allowed read time.
             serial.SerialException: If the serial port is closed.
         """
-        # parse msg from remaining bytes of last call 
-        if self._read_remaining:
-            for ind, old_byte in enumerate(self._read_remaining):
-                frame_msg = self.msg_parser.process_byte(old_byte)  
-                if frame_msg is not None:
-                    if ind != len(self._read_remaining) - 1:  self._read_remaining = self._read_remaining[ind + 1:]
-                    else:   self._read_remaining = bytearray() 
-                    return frame_msg
-            # clean remaining bytes!
-            self._read_remaining = bytearray() 
         
-        # parse new bytes from RX buffer
+        # parse new bytes from Serial RX buffer
         try_counter = 0
         while(self.serial_handler.is_open):
+            # some frames coulde be holded from last call
+            if self.msg_parser.is_msg_available(): 
+                return self.msg_parser.get_message()
+            
             # wait for one byte in serial port
-            one_byte = self.serial_handler.read(1)
+            one_byte = self.serial_handler.read(1) # timeout 
             if not one_byte:
                 try_counter += 1
                 if try_counter * self._read_timeout >= self._max_try_timeout:
                     raise UartReadTimeout('Max read timeout was reached')
                 continue
             try_counter = 0 # reset if connection established
-            frame_msg = self.msg_parser.process_byte(one_byte[0])
-            if frame_msg is not None: 
-                return frame_msg
-            
+            self.msg_parser.process_bytes(one_byte)
+            if self.msg_parser.is_msg_available(): 
+                return self.msg_parser.get_message()
+    
             # read all available  bytes in serial buffer  
             data: bytes = self.serial_handler.read(self.serial_handler.in_waiting)
-            for ind, new_byte in enumerate(data):
-                frame_msg = self.msg_parser.process_byte(new_byte)
-                if frame_msg is not None:
-                    # in case serial buffer (data) still contains bytes that MUST be processes further ->
-                    # -> save to next call in self._read_remaining
-                    if ind != len(data) - 1: self._read_remaining = data[ind + 1:]
-                    return frame_msg 
+            self.msg_parser.process_bytes(data)
+            if self.msg_parser.is_msg_available(): 
+                return self.msg_parser.get_message()
+               
         raise serial.SerialException('Port is closed!')
 
 
@@ -146,6 +148,10 @@ def main():
         while(True):
             try:
                 msg = host_com.uart_read_package()
+                msg_code = msg[1]
+                if not msg_code == MessageCode.IMU_MEAS:
+                    print(f"Expected IMU MEAS, but received: {MessageCode(msg_code)}")
+                    return
                 a_x, a_y, a_z,  \
                 g_x, g_y, g_z,  \
                 m_x, m_y, m_z,  \
@@ -154,13 +160,19 @@ def main():
                                                                                 (g_x, g_y, g_z), 
                                                                                 (m_x, m_y, m_z),
                                                                                 timestamp))
-            except UartReadTimeout as e:
+            except UartReadTimeout:
+                raise
+            except ParserQueueEmptyError:
+                raise
+            except ParserCrc16Error as e:
                 print(e)
-                break
-            
+                continue
+          
     except KeyboardInterrupt:
         print("Program stopped")
     except serial.SerialException as e:
+        print(e)
+    except (UartReadTimeout, ParserQueueEmptyError, ParserCrc16Error) as e:
         print(e)
     finally:
         scaled_meas_logger.flush_buffer()

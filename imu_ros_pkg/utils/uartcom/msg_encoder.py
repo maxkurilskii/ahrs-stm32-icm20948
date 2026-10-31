@@ -31,4 +31,3 @@ class ProtocolEncoder:
         tx_frame.extend([crc16_h, crc16_l])
         return bytes(tx_frame)
         
-        
