@@ -1,4 +1,4 @@
 # print("Welcome to utils module")
 
-from . uart_com import UartCommunicator, MessageCode, UartReadTimeout 
+from .uartcom.uart_worker import UartCommunicator, MessageCode, UartReadTimeout 
 

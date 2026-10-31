@@ -8,9 +8,10 @@ import matplotlib.pyplot as plt
 from typing import Optional
 
 # from stm32_uart_comm import UartCom
-from . uart_com import UartCommunicator, MessageCode, UartReadTimeout
-from . imu_csv_logger import ImuLogger
-from . base_dataclasses import QuaternionMsgResponse
+from utils.uartcom.uart_worker import UartCommunicator, UartReadTimeout
+from utils.uartcom.protocol_codes import PROTOTOL_START_BYTE, MessageCode
+from utils.measlog.imu_csv_logger import ImuLogger
+from utils.uartcom.base_dataclasses import QuaternionMsgResponse
 
 
 plt.rcParams["font.size"] = 12
@@ -74,7 +75,7 @@ def main(args):
                         # Expected ACK: # [start_byte + ERROR_STATUS + data_len + error_code + CRC]
                         print("Received_msg (integer): ", list(rx_msg)) 
                         if (len(rx_msg) != 6 
-                            or rx_msg[0] != UartCommunicator.PROTOTOL_START_BYTE 
+                            or rx_msg[0] != PROTOTOL_START_BYTE 
                             or rx_msg[1] != MessageCode.ERROR_STATUS.value 
                             or rx_msg[2] != 1 ):
                                 print("Invalid ACK message, retrying START_CMD")

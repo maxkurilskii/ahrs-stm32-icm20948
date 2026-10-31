@@ -1,11 +1,13 @@
 import argparse
+from enum import Enum
+from typing import Optional, Tuple, List, Union
+from pathlib import Path
+
 import pandas as pd
 import numpy as np
-from pathlib import Path
-from typing import Optional, Tuple, List, Union
 import matplotlib.pyplot as plt
-from enum import Enum
-from calibrate import MagnetometerCalibrator
+
+from utils.calibration.calibrate import MagnetometerCalibrator
 
 
 class Sensor(Enum):

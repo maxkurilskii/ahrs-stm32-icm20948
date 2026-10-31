@@ -5,15 +5,15 @@ Provides buffered writing of IMU measurements to CSV files and
 automatic generation of timestamped log filenames.
 """
 
-import struct
-import serial
+# import struct
+# import serial
 import datetime as dt
 import csv
 from pathlib import Path
 from enum import Enum
-from typing import List, Dict, Tuple, Optional, Union
+# from typing import List, Dict, Tuple, Optional, Union
 
-from . base_dataclasses import *
+from utils.uartcom.base_dataclasses import *
 
 
 class ImuLogger:

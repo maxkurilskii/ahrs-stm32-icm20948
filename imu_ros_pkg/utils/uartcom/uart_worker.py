@@ -17,152 +17,12 @@ import struct
 from enum import Enum
 from typing import Optional, Union, Tuple, List
 
-from . base_dataclasses import *
-from . crc16 import calculate_crc16
-from . imu_csv_logger import ImuLogger
+from utils.uartcom.base_dataclasses import ReadImuScaledMeasResponse
+from utils.uartcom.msg_parser import ProtocolSerialParser
+from utils.uartcom.msg_encoder import ProtocolEncoder
+from utils.measlog.imu_csv_logger import ImuLogger
 
-class MessageCode(Enum):
-    """Message identifiers used by the STM32 UART protocol."""
-
-    IMU_MEAS        = 0x42      # IMU measurement message
-    START_CMD       = 0x10      # Start command
-    STOP_CMD        = 0x11      # Stop command
-    CALIBRATE_CMD   = 0x12      # Calibration command
-    ERROR_STATUS    = 0x13      # Error status message
-
-
-class ErrorCode(Enum):
-    """Error codes used to report UART protocol errors."""
-
-    NO_ERROR       = 0x00
-    INC_START_BYTE = 0x01
-    INC_MSG_CODE   = 0x02
-    INC_DATA_LEN   = 0x03
-    INC_CRC        = 0x04
-    INC_FRAME_LEN  = 0x05
     
-class ParseStates(Enum):
-    """States of the UART frame parser state machine."""
-
-    WAIT_START    = 0
-    WAIT_MSG_CODE = 1
-    WAIT_LEN      = 2
-    WAIT_DATA     = 3
-    WAIT_CRC_H    = 4 
-    WAIT_CRC_L    = 5 
-
-
-class ProtocolEncoder:
-    """Builds binary UART frames according to the STM32 protocol."""
-         
-    @staticmethod
-    def build_message(msg_code: int, data: bytes) -> bytes:
-        """
-        Build a UART frame containing the message code and payload.
-
-        The resulting frame has the following format:
-            [START][MSG_CODE][DATA_LEN][DATA][CRC_H][CRC_L]
-
-        Args:
-            msg_code: Protocol message identifier.
-            data: Message payload.
-
-        Returns:
-            Encoded UART frame as bytes.
-        """
-        tx_frame = bytearray()
-        tx_frame.extend([UartCommunicator.PROTOTOL_START_BYTE, 
-                        msg_code, 
-                        len(data),
-                        *data])
-        crc16_val = calculate_crc16(tx_frame)
-        crc16_h = (crc16_val >> 8) & 0xFF
-        crc16_l = crc16_val & 0xFF
-        tx_frame.extend([crc16_h, crc16_l])
-        return bytes(tx_frame)
-        
-        
-    
-class ProtocolSerialParser:    
-    """
-    Incremental parser for the binary UART protocol.
-
-    Processes the input stream byte by byte using a finite-state
-    machine and returns a complete frame after successful CRC validation.
-    """
-
-    def __init__(self) -> None:
-        #protocol bytes: [start, cmd, data_len_byte, data, crc_h, crc_l] 
-        self._msg = bytearray() #var for collecting bytes of one frame msg 
-        self._data_len_cntr = 0
-        self._crc16_len_cntr = 2
-        self._current_msg_state = ParseStates.WAIT_START
-
-    def reset_all(self) -> None:
-        """Reset the parser state and discard the current incomplete frame."""
-        self._msg = bytearray() 
-        self._data_len_cntr = 0
-        self._current_msg_state = ParseStates.WAIT_START
-            
-    def process_byte(self, raw_byte: int) -> Optional[bytes]:
-        """
-        Process one byte received from the UART stream.
-
-        Args:
-            raw_byte: Received byte represented as an integer in the range 0..255.
-
-        Returns:
-            A complete validated frame if one has been received;
-            otherwise, None.
-        """
-        if  self._current_msg_state == ParseStates.WAIT_START:
-            if raw_byte == UartCommunicator.PROTOTOL_START_BYTE:
-                self._msg.append(raw_byte)
-                self._current_msg_state = ParseStates.WAIT_MSG_CODE
-                return None
-      
-        elif self._current_msg_state == ParseStates.WAIT_MSG_CODE:
-            try:
-                MessageCode(raw_byte)
-            except ValueError:
-                print("Incorrect MSG CODE")
-                self.reset_all()
-            else:
-                self._msg.append(raw_byte)
-                self._current_msg_state = ParseStates.WAIT_LEN
-            return None
-                
-        elif self._current_msg_state == ParseStates.WAIT_LEN:
-            self._msg.append(raw_byte)
-            self._data_len_cntr = raw_byte
-            if self._data_len_cntr == 0:
-                self._current_msg_state = ParseStates.WAIT_CRC_H
-            else:
-                self._current_msg_state = ParseStates.WAIT_DATA
-            return None
-        
-        elif self._current_msg_state == ParseStates.WAIT_DATA:
-            self._msg.append(raw_byte)
-            self._data_len_cntr -= 1
-            if self._data_len_cntr == 0:
-                self._current_msg_state = ParseStates.WAIT_CRC_H
-            return None
-                            
-        elif self._current_msg_state == ParseStates.WAIT_CRC_H:
-            self._msg.append(raw_byte)
-            self._current_msg_state = ParseStates.WAIT_CRC_L
-            return None
-            
-        elif self._current_msg_state == ParseStates.WAIT_CRC_L:
-            self._msg.append(raw_byte)
-            crc16 = calculate_crc16(self._msg) 
-            if (crc16 & 0xFFFF) != 0x0000:
-                print(f"Incorrect CRC!\nMessage: {self._msg}")  
-                self.reset_all()
-                return None 
-            msg = bytes(self._msg)
-            self.reset_all()
-            return msg
 
 class UartReadTimeout(serial.SerialException):
     """Raised when the maximum UART read timeout is exceeded."""
@@ -175,8 +35,6 @@ class UartCommunicator:
     Handles UART port configuration, frame transmission, reception,
     buffering of incomplete data, and protocol parsing.
     """
-
-    PROTOTOL_START_BYTE  = 0x23 #b'\x23' or b'#'(35)
     
     def __init__(self, port = 'COM4', 
                 baudrate =  115200, 
