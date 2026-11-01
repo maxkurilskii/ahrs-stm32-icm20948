@@ -11,7 +11,7 @@ class MessageCode(Enum):
     STOP_CMD        = 0x11      # Stop command
     CALIBRATE_CMD   = 0x12      # Calibration command
     ERROR_STATUS    = 0x13      # Error status message
-
+    UPD_TIME_CMD    = 0x15      # Update host time on stm
 
 class ErrorCode(Enum):
     """Error codes used to report UART protocol errors."""

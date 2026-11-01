@@ -45,7 +45,7 @@ class UartCommunicator:
                 timeout = 1.0,       
                 # timeout in secs to wait for responce before closing connection (depends on read timeout)
                 max_try_timeout = 4,  
-                # number of bytes for greates possible frame (data/payload byte -> 0 .. 255)
+                # number of bytes for greatest possible frame (data/payload byte -> 0 .. 255)
                 max_frame_size = 255 + 5, 
                 # number of bytes for smallest possible frame (minimum one byte for DATA field)
                 min_frame_size = 6,  

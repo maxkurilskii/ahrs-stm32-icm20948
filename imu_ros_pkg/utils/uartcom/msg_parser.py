@@ -61,6 +61,8 @@ class ProtocolSerialParser:
         self._queue_overflow_count = 0        
         self._data_len_cntr = 0
         self._crc16_error_cntr = 0
+        self._resync_counter = 0
+        self._succeed_resynch = 0
 
 
     def _reset_all(self) -> None:
@@ -111,17 +113,19 @@ class ProtocolSerialParser:
                     self._cur_parse_state = ParseStates.WAIT_MSG_CODE
         
             elif self._cur_parse_state == ParseStates.WAIT_MSG_CODE:
-                if self._is_valid_msg_code(raw_byte):
-                    self._msg.append(raw_byte)
-                    self._cur_parse_state = ParseStates.WAIT_LEN
-                else:
-                     self._reset_all()
-                    
-            elif self._cur_parse_state == ParseStates.WAIT_LEN:
-                if not self._is_valid_msg_size(raw_byte):
-                    self._reset_all()
-                    continue
                 self._msg.append(raw_byte)
+                if self._is_valid_msg_code(raw_byte):
+                    self._cur_parse_state = ParseStates.WAIT_LEN
+                elif not self.resynch():
+                    self._reset_all()
+     
+            elif self._cur_parse_state == ParseStates.WAIT_LEN:
+                self._msg.append(raw_byte)
+                if not self._is_valid_msg_size(raw_byte):
+                    if not self.resynch():
+                        self._reset_all()
+                    continue
+
                 self._data_len_cntr = raw_byte
                 if self._data_len_cntr == 0:
                     self._cur_parse_state = ParseStates.WAIT_CRC_H
@@ -142,9 +146,11 @@ class ProtocolSerialParser:
                 self._msg.append(raw_byte)
                 crc16 = calculate_crc16(self._msg) 
                 if (crc16 & 0xFFFF) != 0x0000:
-                    print(f"Incorrect CRC!\nMessage: {self._msg}")  
+                    print(f"Incorrect CRC!\nMessage: {bytes(self._msg).hex(' ')}")  
                     self._crc16_error_cntr += 1
-                    self._reset_all()
+                    if not self.resynch():
+                        self._reset_all()
+                    continue
 
                 # save frame/msg before reseting it 
                 msg = bytes(self._msg[:3 + self._msg[2] + 2]) # (3 status + payload + crc16)
@@ -152,3 +158,45 @@ class ProtocolSerialParser:
                 if len(self._msg_queue) == self._msg_queue.maxlen: 
                     self._queue_overflow_count += 1
                 self._msg_queue.append(msg)
+
+
+    def resynch(self) -> bool:
+        self._resync_counter += 1
+        cur_buf_ind = len(self._msg) - 1
+        start_byte_ind = self._msg[1:].find(PROTOTOL_START_BYTE)
+        if start_byte_ind == -1:
+            return False
+        
+        # start byte position in current buffer is +1 
+        start_byte_ind += 1
+
+        # transition to next parse logical state
+        # msg content: [possible_start_byte]
+        if start_byte_ind == cur_buf_ind:
+            self._cur_parse_state = ParseStates.WAIT_MSG_CODE
+        
+        # msg content: [possible_start_byte][possible_msg_code]
+        elif cur_buf_ind - 1 == start_byte_ind:
+            if not self._is_valid_msg_code(self._msg[cur_buf_ind]): 
+                return False
+            self._cur_parse_state = ParseStates.WAIT_LEN
+
+        # msg content: [possible_start_byte][possible_msg_code][possible_data_len] 
+        elif cur_buf_ind - 2 == start_byte_ind:
+            if not (self._is_valid_msg_code(self._msg[cur_buf_ind - 1]) and self._is_valid_msg_size(self._msg[cur_buf_ind])): 
+                return False
+            self._data_len_cntr = self._msg[cur_buf_ind]
+            self._cur_parse_state = ParseStates.WAIT_DATA
+        # msg content: [possible_start_byte][possible_msg_code][possible_data_len][payload] 
+        else:
+            if not (self._is_valid_msg_code(self._msg[start_byte_ind + 1]) and self._is_valid_msg_size(self._msg[start_byte_ind + 2])): 
+                return False  
+            self._data_len_cntr = self._msg[start_byte_ind + 2] - len(self._msg[start_byte_ind + 3:])
+            self._cur_parse_state = ParseStates.WAIT_DATA
+
+        del self._msg[:start_byte_ind]
+        self._succeed_resynch += 1
+        return True
+        
+
+
