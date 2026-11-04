@@ -13,6 +13,16 @@ class MessageCode(Enum):
     ERROR_STATUS    = 0x13      # Error status message
     UPD_TIME_CMD    = 0x15      # Update host time on stm
 
+# dict for correspondence of msg code and payload length (data len) byte
+MsgCodePayloadDict = {
+    MessageCode.IMU_MEAS.value:         46,
+    MessageCode.START_CMD.value:        8,
+    MessageCode.STOP_CMD.value:         1, 
+    MessageCode.UPD_TIME_CMD.value:     8,
+    MessageCode.CALIBRATE_CMD.value:    8,
+    MessageCode.ERROR_STATUS.value:     1
+}
+
 class ErrorCode(Enum):
     """Error codes used to report UART protocol errors."""
 

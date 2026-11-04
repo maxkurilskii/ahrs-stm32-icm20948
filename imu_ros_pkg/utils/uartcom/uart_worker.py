@@ -148,9 +148,8 @@ def main():
         while(True):
             try:
                 msg = host_com.uart_read_package()
-                msg_code = msg[1]
-                if not msg_code == MessageCode.IMU_MEAS:
-                    print(f"Expected IMU MEAS, but received: {MessageCode(msg_code)}")
+                if not msg[1] == MessageCode.IMU_MEAS:
+                    print(f"Expected IMU MEAS, but received: {MessageCode(msg[1])}")
                     return
                 a_x, a_y, a_z,  \
                 g_x, g_y, g_z,  \
