@@ -23,7 +23,7 @@ from geometry_msgs.msg import Vector3
 
 # insert project path in SYS.PATH
 sys.path.insert(0, str(Path(__file__).resolve().parents[1])) 
-from utils import UartCommunicator, MessageCode, UartReadTimeout 
+from src import UartCommunicator, MessageCode, UartReadTimeout 
 
 
 def convert_to_imu_msg(q: Quaternion, timestamp_us: int) -> Imu:

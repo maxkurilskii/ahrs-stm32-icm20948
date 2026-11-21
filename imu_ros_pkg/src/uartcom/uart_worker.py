@@ -16,11 +16,11 @@ import time
 import struct
 from enum import Enum
 
-from utils.uartcom.protocol_codes import PROTOTOL_START_BYTE, MessageCode
-from utils.uartcom.base_dataclasses import ReadImuScaledMeasResponse
-from utils.uartcom.msg_parser import ProtocolSerialParser, ParserQueueEmptyError, ParserCrc16Error
-from utils.uartcom.msg_encoder import ProtocolEncoder
-from utils.measlog.imu_csv_logger import ImuLogger
+from src.app_control.protocol_codes import PROTOTOL_START_BYTE, MessageCode
+from src.uartcom.base_dataclasses import ReadImuScaledMeasResponse
+from src.uartcom.msg_parser import ProtocolSerialParser, ParserQueueEmptyError, ParserCrc16Error
+from src.uartcom.msg_encoder import ProtocolEncoder
+from src.measlog.imu_csv_logger import ImuLogger
 
     
 

@@ -2,8 +2,8 @@ from enum import Enum
 from typing import Optional
 from collections import deque
 
-from utils.uartcom.protocol_codes import PROTOTOL_START_BYTE, MessageCode, ErrorCode
-from utils.uartcom.crc16 import calculate_crc16
+from src.app_control.protocol_codes import PROTOTOL_START_BYTE, MessageCode, ErrorCode
+from src.uartcom.crc16 import calculate_crc16
 
 
 class ParseStates(Enum):

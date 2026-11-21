@@ -1,9 +1,9 @@
 import pytest
 import random
-from utils.uartcom.protocol_codes import PROTOTOL_START_BYTE, MessageCode, MsgCodePayloadDict
+from src.app_control.protocol_codes import PROTOTOL_START_BYTE, MessageCode, MsgCodePayloadDict
 # from utils.uartcom.msg_parser import StreamParser, ParseStates 
-from utils.uartcom.stream_parser import StreamParser, ParseStates, ParserQueueEmptyError
-from utils.uartcom.crc16 import calculate_crc16
+from src.uartcom.stream_parser import StreamParser, ParseStates, ParserQueueEmptyError
+from src.uartcom.crc16 import calculate_crc16
 
 @pytest.fixture
 def stream_parser():

@@ -1,5 +1,5 @@
-from utils.uartcom.protocol_codes import PROTOTOL_START_BYTE
-from utils.uartcom.crc16 import calculate_crc16
+from src.app_control.protocol_codes import PROTOTOL_START_BYTE
+from src.uartcom.crc16 import calculate_crc16
 
 
 class ProtocolEncoder:

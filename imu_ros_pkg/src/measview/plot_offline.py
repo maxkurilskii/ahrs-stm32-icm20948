@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-from utils.calibration.calibrate import MagnetometerCalibrator
+from src.calibration.calibrate import MagnetometerCalibrator
 
 
 class Sensor(Enum):

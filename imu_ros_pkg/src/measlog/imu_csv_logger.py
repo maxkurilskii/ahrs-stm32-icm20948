@@ -13,7 +13,7 @@ from pathlib import Path
 from enum import Enum
 # from typing import List, Dict, Tuple, Optional, Union
 
-from utils.uartcom.base_dataclasses import *
+from src.uartcom.base_dataclasses import *
 
 
 class ImuLogger:
