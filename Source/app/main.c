@@ -8,7 +8,7 @@
 #define EULER_ORIENTATION       2
 #define QUATERNION_ORIENTATION  3
 
-#define SEND_MODE   EULER_ORIENTATION  
+#define SEND_MODE   QUATERNION_ORIENTATION
 
 //volatile uint32_t msCounter = 0;
 volatile uint32_t usCounter = 0;
@@ -38,6 +38,7 @@ int main(void){
     IMU20948_Init();
     Madgwick_Filter_Init();
     delay_ms(1000);
+
    
     uint64_t master_ref_time = 0;
     uint32_t stm_ref_time = 0;
@@ -56,16 +57,15 @@ int main(void){
         uint8_t err_code = parse_protocol_frame();
         if (err_code == NO_ERROR){
             /* NO_ERROR = 0x00 -> ack msg */
-            transmit_control_msg_usart3(ERROR, NO_ERROR); 
+            transmit_control_msg_usart3(ERROR_ST, NO_ERROR);
             break;  
         }
         else{
-            transmit_control_msg_usart3(ERROR, err_code); 
+            transmit_control_msg_usart3(ERROR_ST, err_code);
         }
     }
 
     delay_ms(500);
-
     //copy received timestamp (uint64_t)  in ref_time var
     uint8_t* frame  = get_usart_rx_data();
     memcpy((uint8_t*)&master_ref_time, &frame[3], 8); //skip first 3 bytes

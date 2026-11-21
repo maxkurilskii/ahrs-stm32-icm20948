@@ -1,7 +1,8 @@
 #ifndef COMMON_H
 #define COMMON_H
+#define STM32F767xx
 
-#include <stm32f767xx.h>
+#include <stm32f7xx.h>
 #include <stdbool.h>
 #include <string.h>
 #include <stdio.h>

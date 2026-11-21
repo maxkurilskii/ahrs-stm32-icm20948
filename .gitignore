@@ -9,6 +9,10 @@
 *.uvgui.*
 *.uvguix.*
 
+# User-specific VScode and Eclipse files
+*.vscode
+*.project
+
 # Listing files
 *.cod
 *.htm

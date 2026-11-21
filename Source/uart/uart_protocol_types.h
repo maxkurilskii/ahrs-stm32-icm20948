@@ -9,7 +9,7 @@ typedef enum{
     START_CMD = 0x10,
     STOP_CMD  = 0x11,
     ACK       = 0x12,
-    ERROR     = 0x13,
+    ERROR_ST     = 0x13,
     CALIB_CMD = 0x14,   
 }message_code_t ;
 
