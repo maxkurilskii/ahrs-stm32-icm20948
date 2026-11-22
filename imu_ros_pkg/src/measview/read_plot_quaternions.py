@@ -11,7 +11,7 @@ from typing import Optional
 from src.uartcom.uart_worker import UartCommunicator, UartReadTimeout
 from src.app_control.protocol_codes import PROTOTOL_START_BYTE, MessageCode
 from src.measlog.imu_csv_logger import ImuLogger
-from src.uartcom.base_dataclasses import QuaternionMsgResponse
+from src.app_control.base_dataclasses import QuaternionMsgResponse
 
 
 plt.rcParams["font.size"] = 12

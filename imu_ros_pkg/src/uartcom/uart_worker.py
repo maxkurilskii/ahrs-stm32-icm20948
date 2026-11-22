@@ -17,7 +17,7 @@ import struct
 from enum import Enum
 
 from src.app_control.protocol_codes import PROTOTOL_START_BYTE, MessageCode
-from src.uartcom.base_dataclasses import ReadImuScaledMeasResponse
+from src.app_control.base_dataclasses import ReadImuScaledMeasResponse
 from src.uartcom.msg_parser import ProtocolSerialParser, ParserQueueEmptyError, ParserCrc16Error
 from src.uartcom.msg_encoder import ProtocolEncoder
 from src.measlog.imu_csv_logger import ImuLogger
@@ -110,7 +110,7 @@ class UartCommunicator:
             if not one_byte:
                 try_counter += 1
                 if try_counter * self._read_timeout >= self._max_try_timeout:
-                    raise UartReadTimeout('Max read timeout was reached')
+                    raise UartReadTimeout("Max read timeout was reached")
                 continue
             try_counter = 0 # reset if connection established
             self.msg_parser.process_bytes(one_byte)
