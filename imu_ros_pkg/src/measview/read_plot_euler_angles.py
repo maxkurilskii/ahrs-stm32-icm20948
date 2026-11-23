@@ -7,10 +7,10 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from typing import Optional
 
-from src.uartcom.uart_worker import UartCommunicator, UartReadTimeout
-from src.app_control.protocol_codes import PROTOTOL_START_BYTE, MessageCode
+from src.communication.serial_handler import UartCommunicator, UartReadTimeout
+from src.communication.com_protocol_codes import PROTOTOL_START_BYTE, MessageCode
 from src.measlog.imu_csv_logger import ImuLogger
-from src.app_control.base_dataclasses import ReadImuEulerResponse
+from src.communication.com_dataclasses import ReadImuEulerResponse
 
 
 plt.rcParams["font.size"] = 12

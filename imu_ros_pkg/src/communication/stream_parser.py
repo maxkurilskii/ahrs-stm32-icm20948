@@ -32,8 +32,8 @@ Main components:
 from collections import deque
 from enum import Enum
 
-from src.uartcom.crc16 import calculate_crc16
-from src.app_control.protocol_codes import PROTOTOL_START_BYTE, MessageCode, MsgCodePayloadDict
+from src.communication.crc16 import calculate_crc16
+from src.communication.com_protocol_codes import PROTOTOL_START_BYTE, MessageCode, MsgCodePayloadDict
 
 
 class ParserQueueEmptyError(IndexError):

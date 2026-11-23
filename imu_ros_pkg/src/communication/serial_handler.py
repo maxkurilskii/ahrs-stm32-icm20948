@@ -16,10 +16,10 @@ import time
 import struct
 from enum import Enum
 
-from src.app_control.protocol_codes import PROTOTOL_START_BYTE, MessageCode
-from src.app_control.base_dataclasses import ReadImuScaledMeasResponse
-from src.uartcom.msg_parser import ProtocolSerialParser, ParserQueueEmptyError, ParserCrc16Error
-from src.uartcom.msg_encoder import ProtocolEncoder
+from src.communication.com_protocol_codes import PROTOTOL_START_BYTE, MessageCode
+from src.communication.com_dataclasses import ReadImuScaledMeasResponse
+from src.communication.msg_parser import ProtocolSerialParser, ParserQueueEmptyError, ParserCrc16Error
+from src.communication.msg_encoder import ProtocolEncoder
 from src.measlog.imu_csv_logger import ImuLogger
 
     
@@ -27,8 +27,9 @@ from src.measlog.imu_csv_logger import ImuLogger
 class UartReadTimeout(serial.SerialException):
     """Raised when the maximum UART read timeout is exceeded."""
     pass
+
           
-class UartCommunicator:
+class MsgCommunicator:
     """
     Provides serial communication with the STM32 device.
 
@@ -59,10 +60,10 @@ class UartCommunicator:
             baudrate: UART communication speed in baud.
             timeout: Serial read timeout in seconds.
         """
-        self.serial_handler = serial.Serial(port = port, 
-                                        baudrate = baudrate, 
-                                        timeout = timeout, 
-                                        write_timeout = 0.1) # 0.1 or None? 
+        self._serial = serial.Serial(port = port, 
+                                    baudrate = baudrate, 
+                                    timeout = timeout, 
+                                    write_timeout = 0.1) # 0.1 or None? 
         
         self._read_timeout = timeout
         self._max_try_timeout = max_try_timeout
@@ -70,7 +71,7 @@ class UartCommunicator:
         self.msg_encoder = ProtocolEncoder()
         self._read_remaining = bytearray()
 
-    def uart_write_package(self, msg_code: int, data: bytes):
+    def write_package(self, msg_code: int, data: bytes):
         """
         Encode and transmit a protocol message over UART.
 
@@ -79,10 +80,9 @@ class UartCommunicator:
             data: Message payload.
         """
         tx_msg: bytes = self.msg_encoder.build_message(msg_code, data)
-        # print('Cmd tx message: ', tx_msg.hex(' '))
-        self.serial_handler.write(tx_msg)
+        self._serial.write(tx_msg)
 
-    def uart_read_package(self) -> bytes:
+    def read_package(self) -> bytes:
         """
         Read and parse the next complete UART frame.
 
@@ -100,13 +100,13 @@ class UartCommunicator:
         
         # parse new bytes from Serial RX buffer
         try_counter = 0
-        while(self.serial_handler.is_open):
+        while(self._serial.is_open):
             # some frames coulde be holded from last call
             if self.msg_parser.is_msg_available(): 
                 return self.msg_parser.get_message()
             
             # wait for one byte in serial port
-            one_byte = self.serial_handler.read(1) # timeout 
+            one_byte = self._serial.read(1) # timeout 
             if not one_byte:
                 try_counter += 1
                 if try_counter * self._read_timeout >= self._max_try_timeout:
@@ -118,7 +118,7 @@ class UartCommunicator:
                 return self.msg_parser.get_message()
     
             # read all available  bytes in serial buffer  
-            data: bytes = self.serial_handler.read(self.serial_handler.in_waiting)
+            data: bytes = self._serial.read(self._serial.in_waiting)
             self.msg_parser.process_bytes(data)
             if self.msg_parser.is_msg_available(): 
                 return self.msg_parser.get_message()
@@ -141,14 +141,14 @@ def main():
     header_formatted = [f'{header[0]:>22}'] + [f"{data:>9}" for data in header[1:]]
     scaled_meas_logger = ImuLogger(header = header_formatted)
     try:
-        host_com = UartCommunicator()
-        if host_com.serial_handler.is_open:
+        host_com = MsgCommunicator()
+        if host_com._serial.is_open:
                 print(f'Collecting and saving measurements in {scaled_meas_logger.file_name} ')
                 print('Press CTRL + C to stop program')
         while(True):
             try:
-                msg = host_com.uart_read_package()
-                if not msg[1] == MessageCode.IMU_MEAS:
+                msg = host_com.read_package()
+                if not msg[1] == MessageCode.IMU_SCALED_MEAS:
                     print(f"Expected IMU MEAS, but received: {MessageCode(msg[1])}")
                     return
                 a_x, a_y, a_z,  \

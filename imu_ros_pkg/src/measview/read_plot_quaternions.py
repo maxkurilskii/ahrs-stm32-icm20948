@@ -8,10 +8,10 @@ import matplotlib.pyplot as plt
 from typing import Optional
 
 # from stm32_uart_comm import UartCom
-from src.uartcom.uart_worker import UartCommunicator, UartReadTimeout
-from src.app_control.protocol_codes import PROTOTOL_START_BYTE, MessageCode
+from src.communication.serial_handler import UartCommunicator, UartReadTimeout
+from src.communication.com_protocol_codes import PROTOTOL_START_BYTE, MessageCode
 from src.measlog.imu_csv_logger import ImuLogger
-from src.app_control.base_dataclasses import QuaternionMsgResponse
+from src.communication.com_dataclasses import QuaternionMsgResponse
 
 
 plt.rcParams["font.size"] = 12
