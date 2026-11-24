@@ -1,17 +1,17 @@
 from pynput.keyboard import Key, KeyCode, Listener
-from enum import Enum
+from enum import IntEnum, auto
 from queue import Queue, Empty
 import time
 from threading import Event
 
+class KeyBoardCommmands(IntEnum):
+    CHECK_DEVICE_STATUS = auto()
+    START_QUAT_MEAS     = auto()
+    STOP_QUAT_MEAS      = auto()
+    START_CALIBRATE     = auto()
+    STOP_CALIBRATE      = auto()
+    SET_CALIB_DATA      = auto()
 
-class ControlCommmands(Enum):
-    START_QUAT_MEAS     = 0
-    STOP_QUAT_MEAS      = 1
-    # SET_REF_TIME      = 2 #
-    START_CALIBRATE     = 3
-    STOP_CALIBRATE      = 4
-    SEND_CALIB_DATA     = 5
 
 class ShutdownException(Exception):
     pass
@@ -20,12 +20,12 @@ class KeyboardListener:
 
     # Команды - Кнопки
     KEY_CMD_MAP = {
-        'Q': ControlCommmands.START_QUAT_MEAS,
-        'S': ControlCommmands.STOP_QUAT_MEAS,
+        'Q': KeyBoardCommmands.START_QUAT_MEAS,
+        'S': KeyBoardCommmands.STOP_QUAT_MEAS,
         # 'T': ControlCommmands.SET_REF_TIME,
-        'C': ControlCommmands.START_CALIBRATE,
-        'E': ControlCommmands.STOP_CALIBRATE,
-        'U': ControlCommmands.SEND_CALIB_DATA
+        # 'C': KeyBoardCommmands.START_CALIBRATE,
+        # 'E': KeyBoardCommmands.STOP_CALIBRATE,
+        # 'U': KeyBoardCommmands.SET_CALIB_DATA
     }
 
     def __init__(self, queue):
@@ -75,10 +75,10 @@ class KeyboardListener:
             RuntimeError("Listener is already running!")
             
 
-    def stop(self):
+    def stop(self, timeout: float = 2):
         if self.listener is not None:
             self.listener.stop() # stop listener thread
-            self.listener.join() # wait for main thread to stop listener thread
+            self.listener.join(timeout = timeout) # wait for main thread to stop listener thread
             self.listener = None
 
     def join(self):
