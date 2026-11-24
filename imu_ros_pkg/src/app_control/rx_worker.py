@@ -1,4 +1,3 @@
-import sys
 from pathlib import Path
 import threading
 from queue import Queue, Empty, Full
@@ -9,17 +8,18 @@ import struct
 # from typing import Any, Protocol, Callable, Union, Optional, Tuple
 
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1])) 
+from src.communication.com_dataclasses import   ReadImuScaledMeasResponse, \
+                                                QuaternionMsgResponse, \
+                                                AcknowledgeResponse,\
+                                                ParsedFrame
 
-from base_dataclasses import ReadImuScaledMeasResponse, QuaternionMsgResponse, Transport, AcknowledgeResponse, ParsedFrame
-from src.uartcom.serial_worker import  TransportReadTimeOutError, TransportError
 from src.measlog.imu_csv_logger import ImuLogger
-from protocol_codes import MessageCode
+from src.communication.com_protocol_codes import MessageCode
 
 
 class RxMsgHandlerThread(threading.Thread):
     def __init__(self, 
-                transport: Transport,
+                transport,
                 ack_queue: Queue,
                 scaled_meas_queue: Queue,
                 stop_event: threading.Event):
@@ -75,10 +75,6 @@ class RxMsgHandlerThread(threading.Thread):
                 print(f"UART error: {e}") # log critical
                 break
             
-            except TransportReadTimeOutError:
-                print("STM read procedure exceeded read timeout") # log warn
-                continue
-
             except Empty:
                 print(f"{self.name}: Rx queue is empty for too long")
                 continue

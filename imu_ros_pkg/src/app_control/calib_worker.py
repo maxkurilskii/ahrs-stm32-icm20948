@@ -7,18 +7,18 @@ from enum import Enum
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1])) 
 
-from base_dataclasses import ReadImuScaledMeasResponse, AcknowledgeResponse, Transport
+from src.communication.com_dataclasses import ReadImuScaledMeasResponse, AcknowledgeResponse
 from src.measlog.imu_csv_logger import ImuLogger
-from protocol_codes import MessageCode, ErrorCode
+from src.communication.com_protocol_codes import MessageCode, ErrorCode
 from src.calibration.calibrate import MagnetometerCalibrator
 
 
 class CalibrationHandlerThread(threading.Thread):
-    def __init__(self, scaled_msg_queue: Queue, stop_event: threading.Event):
+    def __init__(self, scaled_msg_queue: Queue, calib_stop_event: threading.Event):
         super().__init__(name="CalibrationHandler", daemon=True)
-        self._stop_event = stop_event
+        self._calib_stop_event = calib_stop_event
 
-        self._calib_obj = MagnetometerCalibrator()
+        self._calibrator = MagnetometerCalibrator()
         self._data = None
 
         header = ["Time_us",
@@ -41,7 +41,7 @@ class CalibrationHandlerThread(threading.Thread):
             self.scaled_meas_logger.flush_buffer()
 
     def gather_measurements(self):
-         while not self._stop_event.is_set():
+         while not self._calib_stop_event.is_set():
             try:
                 data: ReadImuScaledMeasResponse = self.scaled_msg_queue.get(timeout=0.1)
                 self.scaled_meas_logger.save_scaled_data(data)

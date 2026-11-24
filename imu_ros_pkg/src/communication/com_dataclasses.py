@@ -8,21 +8,32 @@ between the host and STM32.
 from enum import Enum
 from dataclasses import dataclass, field
 from typing import List, Union, Optional, Tuple, Protocol
-from com_protocol_codes import MessageCode
+from com_protocol_codes import MessageCode, ControlCommands
 
-
-@dataclass(frozen=True)
-class ParsedFrame:
-    msg_code: MessageCode
-    payload: bytes
+@dataclass
+class PendingRequest:
+    request_id: int
+    control_cmd: ControlCommands
+    # msg_code: MessageCode
+    deadline: float
 
 @dataclass(frozen=True)
 class AcknowledgeResponse: 
     """Acknowledge message from the STM32."""
     msg_code: MessageCode
     request_id: int
-    command_code: int
+    control_cmd: int
     error_code: int
+
+@dataclass(frozen=True)
+class RequestResult:
+    request: PendingRequest
+    response: AcknowledgeResponse
+
+@dataclass(frozen=True)
+class ParsedFrame:
+    msg_code: MessageCode
+    payload: bytes
 
 @dataclass(frozen=True)
 class QuaternionMsgResponse:

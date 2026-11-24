@@ -6,7 +6,7 @@ class ProtocolEncoder:
     """Builds binary UART frames according to the STM32 protocol."""
          
     @staticmethod
-    def build_message(msg_code: int, data: bytes) -> bytes:
+    def build_message(msg_code_val: int, data: bytes) -> bytes:
         """
         Build a UART frame containing the message code and payload.
 
@@ -22,7 +22,7 @@ class ProtocolEncoder:
         """
         tx_frame = bytearray()
         tx_frame.extend([PROTOTOL_START_BYTE, 
-                        msg_code, 
+                        msg_code_val, 
                         len(data),
                         *data])
         crc16_val = calculate_crc16(tx_frame)

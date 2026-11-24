@@ -16,9 +16,10 @@ import time
 import struct
 from enum import Enum
 
-from src.communication.com_protocol_codes import PROTOTOL_START_BYTE, MessageCode
+from src.communication.com_protocol_codes import MessageCode
 from src.communication.com_dataclasses import ReadImuScaledMeasResponse
-from src.communication.msg_parser import ProtocolSerialParser, ParserQueueEmptyError, ParserCrc16Error
+# from src.communication.msg_parser import ProtocolSerialParser, ParserQueueEmptyError, ParserCrc16Error
+from src.communication.stream_parser import StreamParser, ParserQueueEmptyError
 from src.communication.msg_encoder import ProtocolEncoder
 from src.measlog.imu_csv_logger import ImuLogger
 
@@ -67,11 +68,11 @@ class MsgCommunicator:
         
         self._read_timeout = timeout
         self._max_try_timeout = max_try_timeout
-        self.msg_parser = ProtocolSerialParser(max_frame_size, min_frame_size, msg_queue_size)
+        self.msg_parser = StreamParser(max_frame_size, min_frame_size, msg_queue_size)
         self.msg_encoder = ProtocolEncoder()
         self._read_remaining = bytearray()
 
-    def write_package(self, msg_code: int, data: bytes):
+    def write_package(self, msg_code_val: int, data: bytes):
         """
         Encode and transmit a protocol message over UART.
 
@@ -79,7 +80,7 @@ class MsgCommunicator:
             msg_code: Protocol message identifier.
             data: Message payload.
         """
-        tx_msg: bytes = self.msg_encoder.build_message(msg_code, data)
+        tx_msg: bytes = self.msg_encoder.build_message(msg_code_val, data)
         self._serial.write(tx_msg)
 
     def read_package(self) -> bytes:
@@ -125,6 +126,8 @@ class MsgCommunicator:
                
         raise serial.SerialException('Port is closed!')
 
+    def close_connection(self):
+        self._serial.close()
 
 def main():
     """
@@ -163,15 +166,12 @@ def main():
                 raise
             except ParserQueueEmptyError:
                 raise
-            except ParserCrc16Error as e:
-                print(e)
-                continue
           
     except KeyboardInterrupt:
         print("Program stopped")
     except serial.SerialException as e:
         print(e)
-    except (UartReadTimeout, ParserQueueEmptyError, ParserCrc16Error) as e:
+    except (UartReadTimeout, ParserQueueEmptyError) as e:
         print(e)
     finally:
         scaled_meas_logger.flush_buffer()
