@@ -8,9 +8,10 @@ class KeyBoardCommmands(IntEnum):
     CHECK_DEVICE_STATUS = auto()
     START_QUAT_MEAS     = auto()
     STOP_QUAT_MEAS      = auto()
-    START_CALIBRATE     = auto()
-    STOP_CALIBRATE      = auto()
-    SET_CALIB_DATA      = auto()
+    # START_CALIBRATE     = auto()
+    # STOP_CALIBRATE      = auto()
+    # SET_CALIB_DATA      = auto()
+    SHUTDOWN            = auto()
 
 
 class ShutdownException(Exception):
@@ -42,7 +43,8 @@ class KeyboardListener:
                 return
 
             if key == Key.esc:
-                raise ShutdownException("ESC pressed!")
+                self.queue.put(KeyBoardCommmands.SHUTDOWN)
+                return False
             
             if isinstance(key, KeyCode):
                 print("\nНажатие обычной клавиши")
@@ -55,7 +57,7 @@ class KeyboardListener:
                 self.pressed_keys.add(key_n)
 
                 # print(f"Сама клавиша: {key}, char: {key.char}, fchar: {key.from_char('A')}, is_dead: {key.is_dead}")
-                command = self.KEY_CMD_MAP.get(key_n)
+                command = self.KEY_CMD_MAP.get(key_n, None)
                 if command is not None:
                     self.queue.put(command)
 
