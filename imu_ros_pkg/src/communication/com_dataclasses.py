@@ -22,8 +22,21 @@ class AcknowledgeResponse:
     """Acknowledge message from the STM32."""
     msg_code: MessageCode
     request_id: int
-    control_cmd: int
+    control_cmd_val: int
     error_code: int
+    # is_updated: bool = field(default=False)
+
+@dataclass(frozen=True)
+class DeviceStatusResponse: 
+    """Device status message from the STM32."""
+    msg_code: MessageCode
+    request_id: int
+    control_cmd_val: int
+    error_code: int
+    dev_state_val: int # temporary is the same meaning as AppState, except UNKNOWN
+
+    # is_updated: bool = field(default=False)
+
 
 @dataclass(frozen=True)
 class RequestResult:
