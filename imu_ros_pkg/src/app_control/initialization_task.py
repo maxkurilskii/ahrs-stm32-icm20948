@@ -166,8 +166,8 @@ class RxMsgHandlerThread(threading.Thread):
                                                                 control_cmd_val, 
                                                                 error_code))
             except serial.SerialException as e:
-                print(f"UART error: {e}") # log critical
-                break
+                print(f"({self.name}): UART error during reading pkg - {e}") # log critical
+                raise
             
             except Empty:
                 print(f"{self.name}: Rx queue is empty for too long")
