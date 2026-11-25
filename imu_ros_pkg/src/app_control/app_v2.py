@@ -26,7 +26,7 @@ from keyboard_cmd_source import KeyboardListener, KeyBoardCommmands
 
 
 class AppState(IntEnum):
-    # INIT                              = auto()
+    UNKNOWN                           = auto()
     IDLE                              = auto()
     # REF_TIME_REQUEST_PENDING          = auto()
     # QUAT_STREAM_REQUEST_PENDING       = auto()
@@ -109,63 +109,110 @@ class ApplicationManager(threading.Thread):
         # self._condition = threading.Condition()
         self._connect_tries = 2
         # self._connection_wait_time = 2
+        self._app_unknown_counter = 0
+        self._app_unknown_limit = 2
 
         self._kb_thread = KeyboardListener(man_queue)
 
         self.ref_time_us = None
 
 
+
+
     def run(self):
-        # INITIALIZATION
-        while not self._stop_event.is_set() and self._conn_state is not ConnectionState.ESTABLISHED and self._connect_tries > 0:
-            # Establish connetion firstly
-            print("Establishing connection ...")
-            self.establish_connection()
-            if self._conn_state != ConnectionState.ESTABLISHED:
-                continue
-            # Initialize reference time
-            self.set_reference_time()
-
-        if self._conn_state is not ConnectionState.ESTABLISHED:
-            return
-       
-        # Stat keyboard thread
-        self._kb_thread.start()
-        
-        while not self._stop_event.is_set():
-            # Exiting on first lost connection without retry (timeout on last responce)
-            if self._conn_state is ConnectionState.LOST:
-                print("Device is not responding. Bye-bye")
-                return
-
+        self._init_procedure()
+        while not self._stop_event.is_set() and self._conn_state is ConnectionState.ESTABLISHED:
+            # --------------------------------------------------------------
+            # Handle UNKNOW app state in 'non-blocking' mode 
+            # (only ESC keyboard cmd is allowed) 
+            # --------------------------------------------------------------
+            if self._app_state is AppState.UNKNOWN: # or check_status_timeout
+                self.check_device_status() # should be non-blocking!
+                if self._conn_state is not ConnectionState.ESTABLISHED:
+                    return
+            
             try:
-                task: Union[RequestResult, KeyBoardCommmands] = self.man_queue.get(timeout = 0.05)
-                if not isinstance(task, (RequestResult, KeyBoardCommmands)):
-                    raise TypeError(f"Get wrong command type! Expected RequestResult or KeyBoardCommmands")
-                if isinstance(task, RequestResult):
-                    self.handle_responce_result(task)
+                task: Union[AcknowledgeResponse, KeyBoardCommmands, DeviceStatusResponse] = self.man_queue.get(timeout = 0.05)
+                if not isinstance(task, (AcknowledgeResponse, KeyBoardCommmands, DeviceStatusResponse)):
+                    raise TypeError(f"Get wrong command type! Expected AcknowledgeResponse or KeyBoardCommmands or DeviceStatusResponse")
+                if isinstance(task, (AcknowledgeResponse, DeviceStatusResponse)):
+                    self.handle_response(task)
                 else:
                     self.handle_keyboard_command(task)
 
             except serial.SerialException as e:
                 print(f"UART TX failed: {e}")
-            # except Empty:
+                
+            except Empty:
+                pass
                 # print(f"{self.name}: Cmd queue is empty for too long") #log debug
             # --------------------------------------------------------------
             # Check pending requests
             # --------------------------------------------------------------
             self.check_pending_requests()
+            
+            
 
-                
+    def _init_procedure(self):
+        # Establish connection firstly
+        while (not self._stop_event.is_set() 
+               and self._conn_state != ConnectionState.ESTABLISHED 
+               and self._connect_tries > 0):
+            
+            print("Establishing connection ...")
+            self.establish_connection()
+            if self._conn_state != ConnectionState.ESTABLISHED:
+                self._connect_tries -= 1
+
+        if self._conn_state != ConnectionState.ESTABLISHED:
+            print("Device is not responding. Bye-bye\n",end='')
+            return
+        
+        self._reset_connection_stats()
+
+        # Initialize reference time
+        while (not self._stop_event.is_set() 
+                and self._connect_tries > 0
+                and self.ref_time_us == None):
+            
+            print("Setting reference time on STM...\n",end='')
+            self.set_reference_time()
+            if self.ref_time_us == None:
+                self._connect_tries -= 1
+
+        if self.ref_time_us is None:
+            print("Failed to initialize reference time\n",end='')
+            self._conn_state = ConnectionState.NOT_EST
+            return
+            
+        self._reset_connection_stats()
+
+
+        self._app_state = AppState.UNKNOWN
+
+        # Start keyboard thread
+        try:
+            self._kb_thread.start() # blocking
+        except Exception as e:
+            print(f"Keyboard thread starting error: {e}\n", end='')
+            raise
+
+    def _reset_connection_stats(self):
+        self._connect_tries = 2
+        self._resp_error_cntr = 0
+
+    def stop_keyboard_listener(self):
+        if self._kb_thread is not None:
+            self._kb_thread.stop()
+
     def check_pending_requests(self):
-        for request_id, request in list(self._local_req_table.items()):
+        for request_id, request in list(self._request_table.items()):
             if time.monotonic() >= request.deadline:
-                print(f"Request {request_id} timeout!")
-                with self._request_lock:
-                    self._request_table.pop(request_id)
-                    self._local_req_table.pop(request_id)
-                print(f"Command {request.control_cmd} was canceled")
-                self._app_state = AppState.IDLE
+                print(f"Request {request_id} timeout!\n",end='')
+                self._cancel_request(request)
+                self._update_response_errors()
+                self._app_state = AppState.UNKNOWN
+ 
                 # if request.control_cmd == ControlCommands.STOP_CALIBRATE:
                     #  TODO: writing to file should be stopped !
                     # may be with blocking + gui info
