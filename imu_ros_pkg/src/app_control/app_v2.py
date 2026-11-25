@@ -10,13 +10,12 @@ from typing import Union, Optional
 
 from src.communication.com_dataclasses import   AcknowledgeResponse,\
                                                 PendingRequest, \
-                                                RequestResult
+                                                DeviceStatusResponse
 
 from src.communication.com_protocol_codes import    MessageCode, \
                                                     ControlCommands, \
                                                     ErrorCode
 from rx_worker import RxMsgHandlerThread
-from ack_worker import AckResponseHandlerThread
 # from calib_worker import CalibrationHandlerThread
 
 from src.communication.serial_handler import MsgCommunicator
@@ -50,7 +49,6 @@ class ConnectionState(IntEnum):
 
 
 class ControlCmdState(IntEnum):
-    FREE     = auto()
     PENDING  = auto()
     DONE     = auto()
     CANCELED = auto()
@@ -59,32 +57,34 @@ class ControlCmdState(IntEnum):
 class AcknowledgeTimeoutError(Exception):
     pass
 
+
+
 class ApplicationManager(threading.Thread):
     
     control_cmd_2_msg_code_mapper = {
         ControlCommands.HANDSHAKE:       MessageCode.HANDSHAKE,
+        ControlCommands.SET_CALIB_DATA:  MessageCode.SET_CALIB_DATA,
+        ControlCommands.CHECK_DEVICE_STATUS: MessageCode.CHECK_DEVICE_STATUS,
         ControlCommands.START_QUAT_MEAS: MessageCode.START_QUAT_MEAS,
         ControlCommands.STOP_QUAT_MEAS:  MessageCode.STOP_QUAT_MEAS,
         ControlCommands.SET_REF_TIME:    MessageCode.SET_REF_TIME,
         ControlCommands.START_CALIBRATE: MessageCode.START_CALIBRATE,
         ControlCommands.STOP_CALIBRATE:  MessageCode.STOP_CALIBRATE,
-        ControlCommands.SET_CALIB_DATA:  MessageCode.SET_CALIB_DATA
     }
 
     keyboard_2_control_cmd_mapper = {
         KeyBoardCommmands.CHECK_DEVICE_STATUS:  ControlCommands.CHECK_DEVICE_STATUS,
         KeyBoardCommmands.START_QUAT_MEAS:      ControlCommands.START_QUAT_MEAS,
         KeyBoardCommmands.STOP_QUAT_MEAS:       ControlCommands.STOP_QUAT_MEAS,
-        KeyBoardCommmands.START_CALIBRATE:      ControlCommands.START_CALIBRATE,
-        KeyBoardCommmands.STOP_CALIBRATE:       ControlCommands.STOP_CALIBRATE,
-        KeyBoardCommmands.SET_CALIB_DATA:       ControlCommands.SET_CALIB_DATA
+        # KeyBoardCommmands.START_CALIBRATE:      ControlCommands.START_CALIBRATE,
+        # KeyBoardCommmands.STOP_CALIBRATE:       ControlCommands.STOP_CALIBRATE,
+        # KeyBoardCommmands.SET_CALIB_DATA:       ControlCommands.SET_CALIB_DATA
     }
 
     def __init__(self,
                 transport: MsgCommunicator,
                 man_queue: Queue,
                 request_table: dict,
-                request_lock: threading.Lock,
                 request_timeout: Union[int, float],
                 stop_event: threading.Event):
         
@@ -96,11 +96,11 @@ class ApplicationManager(threading.Thread):
 
         self._request_id = 1
         self._request_table = request_table
-        self._request_lock = request_lock
-        self._local_req_table = {}
         self._request_timeout = request_timeout
-        self._received_responce = None
-        self._responce_updated = False
+        self._resp_error_cntr = 0
+        self._max_resp_errors = 3
+        self._last_response: Optional[AcknowledgeResponse] = None
+        # self._response_updated = False
 
         self._cntrl_cmd_state: Optional[ControlCmdState] = None
         self._app_state = AppState.IDLE 
@@ -174,38 +174,56 @@ class ApplicationManager(threading.Thread):
                 # if request["try_count"] == 0:
                 #     print("Max try count exceeded!") # log critical
                 #     self.pending_requests.pop(request_id)
-
-
-    def handle_responce_result(self, req_res: RequestResult):
-        request: PendingRequest = req_res.request
-        response: AcknowledgeResponse = req_res.response
-        if response.msg_code == MessageCode.ACK:
-            print(f"Request accepted: {request.control_cmd}")
-            # print("STM32F767zi is available!")
-            self.change_app_state(request)
-            self._cntrl_cmd_state = ControlCmdState.DONE
-            self._conn_state = ConnectionState.ESTABLISHED
-            self._received_responce = response
-            self._responce_updated = True
-        else:
-            print(f"Request NOT accepted: {request.control_cmd}")
+    
+    def check_device_status(self):
+        if self._cntrl_cmd_state is ControlCmdState.PENDING:
+            return
+        print("Device status unknown. Fetching ...\n", end='')
+        self._app_unknown_counter += 1 # resets to zero in change_app_state() method
+        if self._app_unknown_counter > self._app_unknown_limit:
             self._conn_state = ConnectionState.LOST
+            return
+        self.handle_request(ControlCommands.CHECK_DEVICE_STATUS)
+        
+
+      
 
     def handle_keyboard_command(self, kb_cmd: KeyBoardCommmands):
-        if self._cntrl_cmd_state is ControlCmdState.PENDING:
-            print("Waiting for acknowledge from last control command ...")
+        # Process most priority keyboard cmd
+        if kb_cmd == KeyBoardCommmands.SHUTDOWN:
+            print("'ESC' pressed. App exitting ...\n", end='')
+            self._stop_event.set()
             return
         
-        if kb_cmd == KeyBoardCommmands.START_QUAT_MEAS:
-            if self._app_state == AppState.QUAT_STREAM_ACTIVE:
-                print("Quat stream is already active!")
+        # Skip other keyboard cmds while app_state is UNKNOWN
+        if self._app_state is AppState.UNKNOWN:
+            print("CMD skipped! Waiting for device status response ...\n", end='')
+            return
+
+        # Skip other keyboard cmds until last call is received or expired
+        if self._cntrl_cmd_state is ControlCmdState.PENDING:
+            print("CMD skipped! Waiting for acknowledge from last control command ...\n", end='')
+            return
+        
+        elif kb_cmd == KeyBoardCommmands.CHECK_DEVICE_STATUS:
+            if self._app_state in [AppState.IDLE, 
+                                #    AppState.QUAT_STREAM_ACTIVE, # TODO: for simplicity not impl yet
+                                   AppState.QUAT_STREAM_PAUSED]:
+                self.handle_request(ControlCommands.CHECK_DEVICE_STATUS)
+            else:
+                print(f"Can't request device status in {self._app_state}\n", end='')
+        
+
+        elif kb_cmd == KeyBoardCommmands.START_QUAT_MEAS:
+            if self._app_state not in (AppState.IDLE, AppState.QUAT_STREAM_PAUSED):
+                print(f"Cannot start quaternion stream in {self._app_state}\n", end='')
                 return
             if (control_cmd := self._get_matching_control_cmd(kb_cmd)) is not None:
                 self.handle_request(control_cmd)
 
         elif kb_cmd == KeyBoardCommmands.STOP_QUAT_MEAS:
             if self._app_state != AppState.QUAT_STREAM_ACTIVE:
-                print("Quat stream is not active!") 
+                print("Quat stream is not active!\n", end='') 
                 return
             if (control_cmd := self._get_matching_control_cmd(kb_cmd)) is not None:
                 self.handle_request(control_cmd)
@@ -225,75 +243,175 @@ class ApplicationManager(threading.Thread):
         #     self.handle_request(cmd, self._request_id)
 
     def handle_request(self, cmd: ControlCommands, payload = b'\x00'):
-        req_id = self._request_id + 1
-        request = PendingRequest(req_id, 
-                                    cmd,
+        msg_code = self._get_matching_msg_code(cmd)
+        if msg_code is None:
+            raise ValueError(f"Unsupported command: {cmd}")
+        
+        req_id = (self._request_id + 1) & 0xFFFF
+        if req_id == 0:
+            req_id = 1
+        request = PendingRequest(req_id, cmd,
                                     deadline= time.monotonic() +  self._request_timeout)
         # Register request BEFORE transmission.
-        with self._request_lock:
-            if req_id in self._request_table:
-                raise ValueError(f"Request ID {req_id} already exists")
-            self._request_table[req_id] = request
-            self._local_req_table[req_id] = request
+        if req_id in self._request_table:
+            raise ValueError(f"Request ID {req_id} already exists")
+        self._request_table[req_id] = request
+        self._cntrl_cmd_state = ControlCmdState.PENDING
         self._request_id = req_id
-        self._cntrl_cmd_state = ControlCmdState.PENDING  
+        # self._response_updated = False
         try:
-            if (msg_code := self._get_matching_msg_code(cmd)) is not None:
                 self.transport.write_package(msg_code.value, 
                                     # req_id.to_bytes(2, 'little'))
                                     req_id.to_bytes(2, 'little') + payload)
         except serial.SerialException:
-            with self._request_lock:
-                self._request_table.pop(req_id, None)
+            self._request_table.pop(req_id, None)
+            self._cntrl_cmd_state = ControlCmdState.CANCELED
             raise
 
     def _get_matching_control_cmd(self, keyboard_cmd) -> Optional[ControlCommands]:
         res = self.keyboard_2_control_cmd_mapper.get(keyboard_cmd, None)
         if not res:
-            print("Keyboard command doesn't match the control command")
+            print("Keyboard command doesn't match the control command\n", end='')
         return res 
     
     def _get_matching_msg_code(self, control_cmd):
         res = self.control_cmd_2_msg_code_mapper.get(control_cmd, None)
         if not res:
-            print("Control command doesn't match the msg code")
+            print("Control command doesn't match the msg code\n", end='')
         return res 
 
-    def change_app_state(self, request: PendingRequest):
-        if request.control_cmd == ControlCommands.START_QUAT_MEAS:
+    
+    def handle_response(self, response: Union[AcknowledgeResponse, DeviceStatusResponse]) -> Union[AcknowledgeResponse, DeviceStatusResponse, None]: 
+        # if ack_resp is None or not isinstance(ack_resp, AcknowledgeResponse):
+        #     self._update_response_errors()
+        #     return
+        req: Optional[PendingRequest] = self._request_table.get(response.request_id, None)
+        if req is None or not isinstance(req, PendingRequest):
+            print(f"Unknown or expired request ID: {response.request_id}, msg code: {response.msg_code}\n", end='')
+            self._update_response_errors()
+            self._app_state = AppState.UNKNOWN
+            return None
+        
+        if response.msg_code not in (MessageCode.ACK, MessageCode.NACK, MessageCode.CHECK_DEVICE_STATUS):
+            print(f"Unexpected response code: {response.msg_code}\n",end='')
+            self._update_response_errors()
+            self._cancel_request(req)
+            self._app_state = AppState.UNKNOWN
+            return None
+            
+        if response.control_cmd_val != req.control_cmd.value:
+            print(f"response control cmd didn't match pending control cmd. Received: {response.request_id}, {response.msg_code}\n", end = '')
+            self._update_response_errors()
+            self._cancel_request(req)
+            self._app_state = AppState.UNKNOWN
+            return None
+
+        # Remove completed request
+        self._request_table.pop(req.request_id, None)
+        # Reset accumulated response errors 
+        self._resp_error_cntr = 0
+
+        if response.msg_code == MessageCode.NACK:
+            print(f"Request NOT accepted (NACK): {req.control_cmd}\n",end='')
+            # IF NACK is received -> connection is stable -> there are stm-side failures
+            self.log_error_code(response)
+            print(f"Command {req.control_cmd} was canceled\n", end='')
+            self._cntrl_cmd_state = ControlCmdState.CANCELED
+            return None
+
+        print(f"Request accepted (ACK): {req.control_cmd}\n", end='')
+        self._cntrl_cmd_state = ControlCmdState.DONE
+        self.change_app_state(response)
+        return response
+        # self._last_response = ack_resp
+
+    def _update_response_errors(self):
+        self._resp_error_cntr += 1
+        if self._resp_error_cntr >= self._max_resp_errors:
+            # Exiting on first lost connection without retry (max response errors exceeded)
+            print("Device is not responding. Bye-bye")
+            self._conn_state = ConnectionState.LOST
+
+    def _cancel_request(self, req):
+        print(f"Command {req.control_cmd} was canceled\n", end='')
+        self._request_table.pop(req.request_id, None)
+        self._cntrl_cmd_state = ControlCmdState.CANCELED
+
+    def _cancel_all_requests(self):
+        for req_id in list(self._request_table.keys()):
+            # print(f"Command {req.control_cmd} was canceled\n", end='')
+            self._request_table.pop(req_id)
+        self._cntrl_cmd_state = ControlCmdState.CANCELED
+
+    def log_error_code(self, resp: Union[AcknowledgeResponse, DeviceStatusResponse]):
+        if resp.error_code == ErrorCode.INC_CRC.value:
+            print("Incorrect CRC")
+        ...
+
+    def change_app_state(self, response: Union[AcknowledgeResponse, DeviceStatusResponse]):
+
+        control_cmd = ControlCommands(response.control_cmd_val)
+        
+        if control_cmd == ControlCommands.CHECK_DEVICE_STATUS and isinstance(response, DeviceStatusResponse):
+           # self.log_device_status(response.dev_state)
+           # NOTE: dev_state can not be UNKNOWN !
+           try: 
+                dev_state = AppState(response.dev_state_val)
+           except ValueError:
+                print(f"Device state is unknown: {response.dev_state_val}\n", end='')
+                self._app_state = AppState.UNKNOWN
+                return
+           else:
+                self._app_state = dev_state
+                self._app_unknown_counter = 0
+                return
+
+        if control_cmd in [ControlCommands.HANDSHAKE, ControlCommands.SET_REF_TIME]:
+            self._app_state = AppState.IDLE
+
+        elif control_cmd == ControlCommands.START_QUAT_MEAS:
             # self._conn_state = ConnectionState.QUAT_MEAS_RX
             self._app_state = AppState.QUAT_STREAM_ACTIVE
 
-        elif request.control_cmd == ControlCommands.STOP_QUAT_MEAS:
+        elif control_cmd == ControlCommands.STOP_QUAT_MEAS:
             # self._conn_state = ConnectionState.QUAT_MEAS_RX
             # self._app_state = AppState.QUAT_STREAM_PAUSED
             self._app_state = AppState.IDLE
 
 
     def establish_connection(self):
-        if self._connect_tries == 0:
-            print("Device is not responding. Bye-bye")
-            self._stop_event.set()
-            return
-        # clean all task in manager queue
-        self._clean_man_queue()
-        self._connect_tries -= 1
+        self._clean_man_queue() # clean all tasks in manager queue
+        self._cancel_all_requests() # clean all requests in reqest table
         self.handle_request(ControlCommands.HANDSHAKE)
-        task: RequestResult = self.man_queue.get(timeout = self._request_timeout + 0.5)
-        if not isinstance(task, RequestResult):
-            raise TypeError(f"Get wrong command type! Expected RequestResult")
-        self.handle_responce_result(task)
-
+        # blocking !
+        try:
+            task = self.man_queue.get(timeout = self._request_timeout + 0.5)
+        except Empty:
+            print("No response during establishing connection!\n", end='')
+            self._cancel_all_requests() # clean all requests in reqest table
+            return
+        resp = self.handle_response(task)
+        if resp is not None and resp.control_cmd_val == ControlCommands.HANDSHAKE.value:
+           self._conn_state = ConnectionState.ESTABLISHED
+        
     def set_reference_time(self):
+        self._clean_man_queue() # clean all tasks in manager queue
+        self._cancel_all_requests() # clean all requests in reqest table
         reference_time_us = time.time_ns() // 10**3 # int object in the end
         payload = reference_time_us.to_bytes(8, byteorder='little') #cast to uint64 in little-endian
         self.handle_request(ControlCommands.SET_REF_TIME, payload)
-        task: RequestResult = self.man_queue.get(timeout = self._request_timeout + 0.5)
-        if not isinstance(task, RequestResult):
-            raise TypeError(f"Get wrong command type! Expected RequestResult")
-        self.handle_responce_result(task)
-        if self._responce_updated:
+        # blocking !
+        try:
+            task = self.man_queue.get(timeout = self._request_timeout + 0.5)
+        except Empty:
+            print("No response during setting time!\n", end='')
+            self._cancel_all_requests() # clean all requests in reqest table
+            return
+        
+        resp = self.handle_response(task)
+        if resp is not None and resp.control_cmd_val == ControlCommands.SET_REF_TIME.value:
             self.ref_time_us = reference_time_us
+
 
     def _clean_man_queue(self):
         while True:
@@ -305,36 +423,26 @@ class ApplicationManager(threading.Thread):
 def main():
     stop_event = threading.Event()
     uart_transport = MsgCommunicator()  # TODO: cfg for uart comm
-    ManQueue = Queue()
-    AckQueue = Queue()
+    ManQueue = Queue() #TODO: change to PriorityQueue
+    # AckQueue = Queue()
     ack_timeout = 0.1
     ScaledMeasQueue = Queue()
 
     request_table = {}
-    request_lock = threading.Lock()
     request_timeout = 1 # req_wait_time > ack_timeout
 
     rx_thread = RxMsgHandlerThread(uart_transport, 
-                                   AckQueue, 
+                                   ManQueue, 
                                    ScaledMeasQueue, 
                                    stop_event)
-
-    ack_thread = AckResponseHandlerThread(AckQueue, ack_timeout,
-                                          request_table, 
-                                          request_lock,
-                                          ManQueue, 
-                                          stop_event)
-
 
     app_manager_thread = ApplicationManager(uart_transport,
                                             ManQueue, 
                                             request_table,
-                                            request_lock,
                                             request_timeout,
                                             stop_event)
     try:
         rx_thread.start()
-        ack_thread.start()
         app_manager_thread.start()
         app_manager_thread.join()
 
@@ -344,10 +452,22 @@ def main():
         print("Serial port error!")
     except TypeError as e:
         print(f"Error: {e}")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
     finally:
+        # set global event to finish other threads 
         stop_event.set()
-        rx_thread.join(timeout=2.0)
-        ack_thread.join(timeout=2.0)
+
+        # stop keyboard thread
+        app_manager_thread.stop_keyboard_listener()
+        
+        if app_manager_thread.is_alive():
+            app_manager_thread.join(timeout=2.0)
+
+        if rx_thread.is_alive():
+            rx_thread.join(timeout=2.0) # wait for meas and log files to be closed 
+        
+        # close serial port 
         uart_transport.close_connection()
        
 
